@@ -133,6 +133,7 @@
 .input-row input:focus-visible {
   border-color: var(--color-ring);
   outline: none;
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
 }
 
 .btn-primary {
@@ -161,6 +162,45 @@
 .btn-primary:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.btn-primary.sm {
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  font-size: 14px;
+}
+
+/* 提示条 / 导入确认 */
+.notice,
+.import-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  font-size: 13.5px;
+  color: var(--color-muted-foreground);
+}
+
+.notice-error {
+  border-color: var(--color-destructive);
+  color: var(--color-destructive);
+}
+
+.import-bar {
+  flex-direction: column;
+  align-items: stretch;
+  color: var(--color-foreground);
+}
+
+.import-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 /* 进度统计 */
@@ -222,6 +262,7 @@
 
 .segmented {
   position: relative;
+  isolation: isolate;
   display: inline-flex;
   gap: 2px;
   padding: 3px;
@@ -303,6 +344,34 @@
   cursor: not-allowed;
 }
 
+.text-btn.sm {
+  min-height: 36px;
+  font-size: 13px;
+}
+
+.text-btn.danger {
+  color: var(--color-destructive);
+  background: rgba(239, 68, 68, 0.1);
+  font-weight: 600;
+}
+
+/* 行内编辑 */
+.edit-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  padding: 4px 8px;
+  background: var(--color-muted);
+  border: 1px solid var(--color-ring);
+  border-radius: 6px;
+  color: var(--color-foreground);
+}
+
+.edit-input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
+}
+
 /* 列表 */
 .list {
   list-style: none;
@@ -374,10 +443,10 @@
 .text {
   flex: 1;
   min-width: 0;
-  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
-/* 拖拽替代按钮：hover / 键盘聚焦时出现，触屏常显 */
+/* 拖拽替代按钮与编辑按钮：hover / 键盘聚焦时出现，触屏常显 */
 .move {
   display: flex;
   gap: 2px;
@@ -385,13 +454,21 @@
   transition: opacity var(--transition);
 }
 
+.edit {
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
 .list li:hover .move,
-.list li:focus-within .move {
+.list li:focus-within .move,
+.list li:hover .edit,
+.list li:focus-within .edit {
   opacity: 1;
 }
 
 @media (hover: none) {
-  .move {
+  .move,
+  .edit {
     opacity: 1;
   }
 }
@@ -441,6 +518,87 @@
   gap: 6px;
 }
 
+.footer-actions {
+  display: flex;
+  gap: var(--space-1);
+  margin-bottom: 2px;
+}
+
+/* 撤销提示 */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: min(92vw, 440px);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  transform: translateX(-50%);
+  background: var(--color-card);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  box-shadow: var(--color-shadow);
+  color: var(--color-foreground);
+  font-size: 14px;
+  animation: toast-in 180ms ease-out;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.toast-msg {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toast-action {
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  border: none;
+  border-radius: 999px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.toast-action:hover {
+  background: var(--color-primary-strong);
+}
+
+.toast-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  color: var(--color-subtle);
+  cursor: pointer;
+}
+
+.toast-close:hover {
+  color: var(--color-foreground);
+  background: var(--color-muted);
+}
+
 .credit {
   font-size: 12px;
 }
@@ -485,5 +643,19 @@
 
   .stats {
     padding: var(--space-2) var(--space-3);
+  }
+
+  .icon-btn.sm {
+    width: 28px;
+    height: 28px;
+  }
+
+  .list li {
+    gap: 6px;
+  }
+
+  .toast {
+    width: calc(100vw - 32px);
+    border-radius: 16px;
   }
 }

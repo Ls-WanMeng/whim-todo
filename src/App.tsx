@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent, FormEvent } from "react";
 import { AnimatePresence, Reorder, motion, useDragControls } from "motion/react";
 import confetti from "canvas-confetti";
 import AnimatedContent from "./components/reactbits/AnimatedContent";
@@ -9,30 +9,28 @@ import Aurora from "./components/reactbits/Aurora";
 import SpotlightCard from "./components/reactbits/SpotlightCard";
 import ShinyText from "./components/reactbits/ShinyText";
 import { useReducedMotion } from "./hooks/useReducedMotion";
+import {
+  MAX_TEXT_LENGTH,
+  STORAGE_KEY,
+  clearDone,
+  createTodo,
+  moveTodo,
+  parseImport,
+  readState,
+  removeTodo,
+  restoreTodos,
+  serializeExport,
+  toggleTodo,
+  updateTodoText,
+  writeState,
+} from "./lib/todoStore";
+import type { RemovedTodo, Todo } from "./lib/todoStore";
 import "./App.css";
 
-type Todo = { id: number; text: string; done: boolean };
 type Filter = "all" | "active" | "done";
 type Theme = "dark" | "light";
 
-const STORAGE_KEY = "dsh-demo-todos";
 const THEME_KEY = "dsh-demo-theme";
-
-function loadTodos(): Todo[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    const data = raw ? JSON.parse(raw) : [];
-    return Array.isArray(data) ? data : [];
-  } catch {
-    return [];
-  }
-}
-
-function initialTheme(): Theme {
-  const saved = localStorage.getItem(THEME_KEY);
-  if (saved === "dark" || saved === "light") return saved;
-  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
-}
 
 const CONFETTI_COLORS = ["#2dd4bf", "#fb923c", "#818cf8"];
 
@@ -45,6 +43,16 @@ function burst(big = false) {
     colors: CONFETTI_COLORS,
     disableForReducedMotion: true,
   });
+}
+
+function initialTheme(): Theme {
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === "dark" || saved === "light") return saved;
+  } catch {
+    // 存储不可用时跟随系统
+  }
+  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
 }
 
 const FILTERS: { key: Filter; label: string }[] = [
@@ -65,6 +73,23 @@ function TrashIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6" />
+    </svg>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 20h4l10-10a2.8 2.8 0 0 0-4-4L4 16v4Z" />
+      <path d="m13.5 6.5 4 4" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+      <path d="M6 6l12 12M18 6 6 18" />
     </svg>
   );
 }
@@ -130,12 +155,54 @@ function TodoItem(props: {
   total: number;
   canReorder: boolean;
   reduced: boolean;
-  onToggle: (id: number) => void;
-  onRemove: (id: number) => void;
-  onMove: (i: number, delta: number) => void;
+  onToggle: (id: string) => void;
+  onRemove: (id: string) => void;
+  onEdit: (id: string, text: string) => void;
+  onMove: (id: string, delta: number) => void;
 }) {
-  const { todo, index, total, canReorder, reduced, onToggle, onRemove, onMove } = props;
+  const { todo, index, total, canReorder, reduced, onToggle, onRemove, onEdit, onMove } = props;
   const controls = useDragControls();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(todo.text);
+  const editRef = useRef<HTMLInputElement>(null);
+  const escaping = useRef(false);
+  const committing = useRef(false);
+
+  useEffect(() => {
+    if (!editing) return;
+    const input = editRef.current;
+    input?.focus();
+    input?.select();
+  }, [editing]);
+
+  function startEdit() {
+    setDraft(todo.text);
+    escaping.current = false;
+    committing.current = false;
+    setEditing(true);
+  }
+
+  function commitEdit() {
+    if (escaping.current) {
+      escaping.current = false;
+      return;
+    }
+    if (committing.current) return;
+    committing.current = true;
+    const nextText = draft.trim();
+    setEditing(false);
+    if (!nextText || nextText === todo.text) {
+      setDraft(todo.text);
+      return;
+    }
+    onEdit(todo.id, nextText);
+  }
+
+  function cancelEdit() {
+    escaping.current = true;
+    setDraft(todo.text);
+    setEditing(false);
+  }
 
   return (
     <Reorder.Item
@@ -151,7 +218,7 @@ function TodoItem(props: {
       transition={reduced ? { duration: 0 } : { duration: 0.22, ease: "easeOut" }}
     >
       {canReorder && (
-        <span className="drag" title="拖动排序" onPointerDown={(e) => controls.start(e)}>
+        <span className="drag" title="拖动排序" aria-hidden="true" onPointerDown={(e) => controls.start(e)}>
           <GripIcon />
         </span>
       )}
@@ -162,13 +229,46 @@ function TodoItem(props: {
         onChange={() => onToggle(todo.id)}
         aria-label={`标记「${todo.text}」为${todo.done ? "未完成" : "已完成"}`}
       />
-      <span className="text">{todo.text}</span>
-      {canReorder && (
+      {editing ? (
+        <input
+          ref={editRef}
+          className="edit-input"
+          value={draft}
+          maxLength={MAX_TEXT_LENGTH}
+          aria-label={`编辑「${todo.text}」`}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commitEdit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commitEdit();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              cancelEdit();
+            }
+          }}
+        />
+      ) : (
+        <span className="text" title="双击编辑" onDoubleClick={startEdit}>
+          {todo.text}
+        </span>
+      )}
+      {!editing && (
+        <button
+          type="button"
+          className="icon-btn sm edit"
+          onClick={startEdit}
+          aria-label={`编辑「${todo.text}」`}
+        >
+          <PencilIcon />
+        </button>
+      )}
+      {canReorder && !editing && (
         <span className="move">
           <button
             type="button"
             className="icon-btn sm"
-            onClick={() => onMove(index, -1)}
+            onClick={() => onMove(todo.id, -1)}
             disabled={index === 0}
             aria-label={`上移「${todo.text}」`}
           >
@@ -177,7 +277,7 @@ function TodoItem(props: {
           <button
             type="button"
             className="icon-btn sm"
-            onClick={() => onMove(index, 1)}
+            onClick={() => onMove(todo.id, 1)}
             disabled={index === total - 1}
             aria-label={`下移「${todo.text}」`}
           >
@@ -198,23 +298,85 @@ function TodoItem(props: {
 }
 
 export default function App() {
-  const [todos, setTodos] = useState<Todo[]>(loadTodos);
+  const [initialRead] = useState(() => readState(window.localStorage));
+  const [todos, setTodos] = useState<Todo[]>(initialRead.items);
   const [text, setText] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [theme, setTheme] = useState<Theme>(initialTheme);
+  const [announcement, setAnnouncement] = useState("");
+  const [storageError, setStorageError] = useState("");
+  const [notice, setNotice] = useState(() => {
+    if (initialRead.status === "corrupt") return "本地数据读取失败，已备份原始数据并从空白开始。";
+    if (initialRead.status === "migrated") {
+      return initialRead.dropped > 0
+        ? `旧版数据已升级，忽略 ${initialRead.dropped} 条无效条目。`
+        : "旧版数据已自动升级。";
+    }
+    if (initialRead.dropped > 0) return `已忽略 ${initialRead.dropped} 条无效数据。`;
+    return "";
+  });
+  const [undo, setUndo] = useState<{ message: string; removed: RemovedTodo[] } | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [pendingImport, setPendingImport] = useState<{
+    items: Todo[];
+    dropped: number;
+    name: string;
+  } | null>(null);
   const reduced = useReducedMotion();
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const btnRefs = useRef<Partial<Record<Filter, HTMLButtonElement | null>>>({});
   const [pill, setPill] = useState({ x: 0, w: 0 });
 
+  const announce = useCallback((message: string) => setAnnouncement(message), []);
+
+  /* 首次迁移/损坏恢复后也要落盘；正常启动时不重复写 */
+  const firstWrite = useRef(true);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
-  }, [todos]);
+    if (firstWrite.current) {
+      firstWrite.current = false;
+      if (initialRead.status === "ok") return;
+    }
+    const result = writeState(window.localStorage, todos);
+    setStorageError(result.ok ? "" : "浏览器存储不可用，修改仅保留在当前页面。");
+  }, [todos, initialRead.status]);
+
+  /* 跨标签页同步：其他标签页写入后重新读取 */
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== null && event.key !== STORAGE_KEY) return;
+      const result = readState(window.localStorage);
+      if (result.status !== "corrupt") {
+        setTodos(result.items);
+        announce("已同步其他标签页的修改");
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [announce]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    localStorage.setItem(THEME_KEY, theme);
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      // 主题记忆失败不影响使用
+    }
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (meta) meta.content = theme === "light" ? "#e8edf5" : "#0b1120";
   }, [theme]);
+
+  useEffect(() => {
+    if (!undo) return;
+    const timer = window.setTimeout(() => setUndo(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [undo]);
+
+  useEffect(() => {
+    if (!confirmClear) return;
+    const timer = window.setTimeout(() => setConfirmClear(false), 4000);
+    return () => window.clearTimeout(timer);
+  }, [confirmClear]);
 
   /* 快捷键：/ 聚焦输入框，Esc 清空 */
   useEffect(() => {
@@ -236,6 +398,7 @@ export default function App() {
   const activeCount = todos.filter((t) => !t.done).length;
   const doneCount = todos.length - activeCount;
   const pct = todos.length ? Math.round((doneCount / todos.length) * 100) : 0;
+  const clearArmed = confirmClear && doneCount > 0;
 
   const visible = useMemo(() => {
     if (filter === "active") return todos.filter((t) => !t.done);
@@ -249,34 +412,122 @@ export default function App() {
     e.preventDefault();
     const value = text.trim();
     if (!value) return;
-    setTodos((list) => [...list, { id: Date.now(), text: value, done: false }]);
+    const item = createTodo(value);
+    const nextOrder = todos.reduce((max, todo) => Math.max(max, todo.order), -1) + 1;
+    setTodos([...todos, { ...item, order: nextOrder }]);
     setText("");
+    announce(`已添加：${value}`);
   }
 
-  function toggle(id: number) {
+  function toggle(id: string) {
     const target = todos.find((t) => t.id === id);
     if (!target) return;
-    const next = todos.map((t) => (t.id === id ? { ...t, done: !t.done } : t));
+    const next = toggleTodo(todos, id);
     setTodos(next);
-    if (!target.done) burst(next.length > 0 && next.every((t) => t.done));
+    if (!target.done) {
+      burst(next.length > 0 && next.every((t) => t.done));
+      announce(`已完成：${target.text}`);
+    } else {
+      announce(`已恢复：${target.text}`);
+    }
   }
 
-  const remove = (id: number) => setTodos((list) => list.filter((t) => t.id !== id));
-  const clearDone = () => setTodos((list) => list.filter((t) => !t.done));
+  function edit(id: string, nextText: string) {
+    const next = updateTodoText(todos, id, nextText);
+    if (next === todos) return;
+    setTodos(next);
+    announce(`已更新：${nextText}`);
+  }
+
+  function remove(id: string) {
+    const result = removeTodo(todos, id);
+    if (!result.removed) return;
+    setTodos(result.items);
+    setUndo({ message: `已删除「${result.removed.item.text}」`, removed: [result.removed] });
+    announce(`已删除：${result.removed.item.text}，可撤销`);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }
+
+  function clearCompleted() {
+    const result = clearDone(todos);
+    if (result.removed.length === 0) return;
+    setTodos(result.items);
+    setUndo({ message: `已清除 ${result.removed.length} 条已完成`, removed: result.removed });
+    announce(`已清除 ${result.removed.length} 条已完成，可撤销`);
+    setConfirmClear(false);
+  }
+
+  function handleClearClick() {
+    if (!clearArmed) {
+      setConfirmClear(true);
+      announce(`再次点击确认清除 ${doneCount} 条已完成`);
+      return;
+    }
+    clearCompleted();
+  }
+
+  function undoLast() {
+    if (!undo) return;
+    setTodos((list) => restoreTodos(list, undo.removed));
+    announce(`已恢复 ${undo.removed.length} 条`);
+    setUndo(null);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }
 
   function handleReorder(order: Todo[]) {
-    if (filter === "all") setTodos(order);
+    if (filter !== "all") return;
+    setTodos(order.map((item, index) => (item.order === index ? item : { ...item, order: index })));
   }
 
-  function move(i: number, delta: number) {
-    const j = i + delta;
-    if (j < 0 || j >= todos.length) return;
-    setTodos((list) => {
-      const next = [...list];
-      const [moved] = next.splice(i, 1);
-      next.splice(j, 0, moved);
-      return next;
-    });
+  function move(id: string, delta: number) {
+    setTodos((list) => moveTodo(list, id, delta));
+  }
+
+  function exportTodos() {
+    const json = serializeExport(todos);
+    const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `whim-todo-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    announce(`已导出 ${todos.length} 条`);
+  }
+
+  async function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    let content: string;
+    try {
+      content = await file.text();
+    } catch {
+      setNotice("读取文件失败，请重试。");
+      announce("读取文件失败");
+      return;
+    }
+
+    const result = parseImport(content);
+    if (!result.ok) {
+      setNotice(result.error);
+      announce(result.error);
+      return;
+    }
+    setPendingImport({ items: result.items, dropped: result.dropped, name: file.name });
+    announce(`已读取 ${result.items.length} 条，等待确认导入`);
+  }
+
+  function confirmImport() {
+    if (!pendingImport) return;
+    setTodos(pendingImport.items);
+    setUndo(null);
+    const extra = pendingImport.dropped > 0 ? `，忽略 ${pendingImport.dropped} 条无效数据` : "";
+    setNotice(`已导入 ${pendingImport.items.length} 条${extra}`);
+    announce(`已导入 ${pendingImport.items.length} 条`);
+    setPendingImport(null);
   }
 
   const counts: Record<Filter, number> = {
@@ -346,6 +597,17 @@ export default function App() {
           </button>
         </header>
 
+        {(notice || storageError) && (
+          <div className={`notice${storageError ? " notice-error" : ""}`} role="status">
+            <span>{storageError || notice}</span>
+            {!storageError && (
+              <button type="button" className="icon-btn sm" onClick={() => setNotice("")} aria-label="关闭提示">
+                <CloseIcon />
+              </button>
+            )}
+          </div>
+        )}
+
         <form className="input-row" onSubmit={addTodo}>
           <input
             ref={inputRef}
@@ -353,13 +615,30 @@ export default function App() {
             onChange={(e) => setText(e.target.value)}
             placeholder="要做点什么？"
             aria-label="新待办内容"
-            maxLength={100}
+            maxLength={MAX_TEXT_LENGTH}
           />
           <button type="submit" className="btn-primary" disabled={!text.trim()}>
             <PlusIcon />
             添加
           </button>
         </form>
+
+        {pendingImport && (
+          <div className="import-bar" role="group" aria-label="确认导入">
+            <span title={pendingImport.name}>
+              导入 {pendingImport.items.length} 条将替换现有 {todos.length} 条
+              {pendingImport.dropped > 0 ? `（忽略 ${pendingImport.dropped} 条）` : ""}
+            </span>
+            <div className="import-actions">
+              <button type="button" className="btn-primary sm" onClick={confirmImport}>
+                确认导入
+              </button>
+              <button type="button" className="text-btn" onClick={() => setPendingImport(null)}>
+                取消
+              </button>
+            </div>
+          </div>
+        )}
 
         <section className="stats">
           <svg className="ring" width="56" height="56" viewBox="0 0 56 56" role="img" aria-label={`完成进度 ${pct}%`}>
@@ -414,8 +693,13 @@ export default function App() {
               </button>
             ))}
           </div>
-          <button type="button" className="text-btn" onClick={clearDone} disabled={doneCount === 0}>
-            清除已完成
+          <button
+            type="button"
+            className={`text-btn${clearArmed ? " danger" : ""}`}
+            onClick={handleClearClick}
+            disabled={doneCount === 0}
+          >
+            {clearArmed ? `确认清除 ${doneCount} 项` : "清除已完成"}
           </button>
         </div>
 
@@ -437,6 +721,7 @@ export default function App() {
                 reduced={reduced}
                 onToggle={toggle}
                 onRemove={remove}
+                onEdit={edit}
                 onMove={move}
               />
             ))}
@@ -458,8 +743,23 @@ export default function App() {
         </Reorder.Group>
 
         <footer className="footer">
+          <div className="footer-actions">
+            <button type="button" className="text-btn sm" onClick={exportTodos}>
+              导出 JSON
+            </button>
+            <button type="button" className="text-btn sm" onClick={() => fileRef.current?.click()}>
+              导入 JSON
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="application/json,.json"
+              hidden
+              onChange={handleFileChange}
+            />
+          </div>
           <span>
-            按 <kbd>/</kbd> 聚焦输入 · <kbd>Esc</kbd> 清空 · 拖动条目或用箭头按钮排序
+            按 <kbd>/</kbd> 聚焦输入 · <kbd>Esc</kbd> 清空 · 双击文字编辑 · 拖动条目或用箭头按钮排序
           </span>
           <span className="credit">
             开源仓库{" "}
@@ -513,6 +813,20 @@ export default function App() {
           {card}
         </AnimatedContent>
       )}
+      {undo && (
+        <div className="toast" role="group" aria-label="操作提示">
+          <span className="toast-msg">{undo.message}</span>
+          <button type="button" className="toast-action" onClick={undoLast}>
+            撤销
+          </button>
+          <button type="button" className="toast-close" onClick={() => setUndo(null)} aria-label="关闭提示">
+            <CloseIcon />
+          </button>
+        </div>
+      )}
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {announcement}
+      </div>
     </div>
   );
 }
