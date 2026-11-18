@@ -7,6 +7,7 @@ import BlurText from "./components/reactbits/BlurText";
 import CountUp from "./components/reactbits/CountUp";
 import SpotlightCard from "./components/reactbits/SpotlightCard";
 import ShinyText from "./components/reactbits/ShinyText";
+import whimTodoLogo from "./assets/whim-todo-logo.svg";
 import SettingsPanel from "./components/SettingsPanel";
 import ThemeScene from "./components/ThemeScene";
 import { useMotionPreference } from "./hooks/useMotionPreference";
@@ -632,20 +633,23 @@ export default function App() {
         grain={0.06}
       >
         <header className="hero">
-          <div>
-            <div role="heading" aria-level={1}>
-              <BlurText
-                text="待办清单"
-                animateBy="letters"
-                trigger="load"
-                delay={60}
-                blur={6}
-                distance={20}
-                stepDuration={0.3}
-                className="hero-title"
-              />
+          <div className="hero-brand">
+            <img src={whimTodoLogo} alt="Whim Todo 标志" className="hero-logo" />
+            <div>
+              <div role="heading" aria-level={1}>
+                <BlurText
+                  text="待办清单"
+                  animateBy="letters"
+                  trigger="load"
+                  delay={60}
+                  blur={6}
+                  distance={20}
+                  stepDuration={0.3}
+                  className="hero-title"
+                />
+              </div>
+              <p>Vite + React + TypeScript 演示 · 数据保存在本地浏览器</p>
             </div>
-            <p>Vite + React + TypeScript 演示 · 数据保存在本地浏览器</p>
           </div>
           <div className="header-actions">
             <button
