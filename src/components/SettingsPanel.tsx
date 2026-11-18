@@ -270,6 +270,10 @@ export default function SettingsPanel(props: Props) {
                   <kbd>/</kbd> 聚焦输入 · <kbd>Esc</kbd> 清空 · 双击文字编辑
                 </dd>
               </div>
+              <div>
+                <dt>操作提示</dt>
+                <dd>拖动条目或使用箭头按钮排序 · 删除与清除已完成可在 6 秒内撤销</dd>
+              </div>
             </dl>
             <p className="settings-note">数据只保存在当前浏览器的 localStorage，不会上传到任何服务器。</p>
           </section>
