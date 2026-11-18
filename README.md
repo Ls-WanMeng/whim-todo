@@ -72,6 +72,10 @@ npm run preview
 `npm run build` 产出的 `dist/` 为纯静态文件，可直接托管到 Netlify / Vercel / GitHub Pages
 （演示站点即托管于 Netlify）。
 
+打包结果里的 `dist/index.html` 是**单文件**：JS / CSS 全部内联、脚本为普通 `<script>`（不是 ES module），
+所以双击用 `file://` 打开也能正常显示，不需要起服务器。构建时用 `base: './'` + iife 输出正是为此，
+改动 `vite.config.ts` 里的 `inlineSingleFile` 插件时别把这些前提破坏掉。
+
 ## 目录结构
 
 ```
