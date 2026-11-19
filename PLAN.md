@@ -2,8 +2,13 @@
 
 > 基于 2026-11-17 对仓库代码、`design-system/`、react-bits vendor 目录与同类产品的评审整理。
 > 目标：把「视觉演示型 Demo」推进到「敢日常使用的轻量备忘录 + 待办」。
-> 分支约定见文末，遵循仓库 `AIGENT.md`：临时分支 → `develop` →（经确认）squash 到 `main`。
+> 分支约定见文末，遵循仓库 `AIGENT.md`：临时分支 → `Agent` → `develop` →（经确认）squash 到 `main`。
 
+> **进度快照（2026-11-19 深夜）：** Sprint A、B 关闭；Sprint C 的 **C1–C5 全部完成并接线**
+> （数据模型 / 视图分组排序 / 自然语言快速添加 / 搜索命令面板 / 备忘录模式：时间线 + 置顶 + 每日回顾 + 自研 Markdown），
+> `235 tests` 全绿，`lint`（0 error，仅 vendor 既有 7 warning）与 `build` 均通过。C1–C5 细则已归档到 `PLANED.md`。
+> 分支状态：`feat/memo-mode`（10 个细分提交）已普通 merge 回 `Agent`（合并提交 c07197b，App/App.css/PLAN.md 冲突已手工解决；Agent 侧另有 GlassSelect 与统计周报特性，合并后 235 tests / lint 0 error / build 全通过）。已合入 develop。
+> 下一步：**C6 模板与重复（可选）** 或 **C7 收尾（A8 PWA、B5 文档、版本号；LICENSE 已完成）**。
 ---
 
 ## 0. 定位与成功标准
@@ -58,7 +63,7 @@
 | D12 | 低 | 筛选视图重排索引隐患 | `move(i,delta)` 用全量下标 | 改为按 id + `order` 字段移动；当前保持筛选下禁用拖拽 | 筛选态不出现错位 |
 | D13 | 低 | `theme-color` 固定不随主题 | `index.html:7` | 切换主题时更新 meta | 移动端浏览器栏颜色跟随 |
 | D14 | 文档 | `design-system/MASTER.md` 与实际 UI 不符 | `design-system/todo-demo/` | 主题定型后重新生成并提交 | 文档与实现一致 |
-| D15 | 文档 | 根目录缺少 `LICENSE` | 仓库根 | 补 MIT，注明 vendor 目录适用 Commons Clause | GitHub 识别许可证 |
+| D15 | 文档 | 根目录缺少 `LICENSE` | 仓库根 | 补 MIT，注明 vendor 目录适用 Commons Clause | **已关闭** ✅ |
 
 ---
 
@@ -130,8 +135,8 @@
 ### A7. 字体与元信息
 
 - [x] 字体策略选「删除声明、改用系统字体栈」，去掉未加载的 Inter。
-- [x] `theme-color` 跟随主题；补 `description`、`og:title`、`og:description`（`og:image` 与 `LICENSE` 待补）。
-- [ ] 根目录补 `LICENSE`（MIT，注明 vendor 例外）—— 留到发布 v1.1.0 前处理。
+- [x] `theme-color` 跟随主题；补 `description`、`og:title`、`og:description`（`og:image` 待补）。
+- [x] 根目录补 `LICENSE`（MIT，注明 vendor 例外）。
 
 ### A8. PWA 与离线（可拆到 A 之后）
 
@@ -237,72 +242,51 @@ export type ThemeDef = {
 
 ## 6. Sprint C：日用能力
 
-### C1. 任务模型
+> **C1–C4 已完成并归档**：任务模型、视图与分组排序、自然语言快速添加、搜索与命令面板。
+> 简要总结（做了什么 / 落在哪 / 怎么验）见 `PLANED.md`；此处只保留未完成项。
+### C5. 备忘录模式（已完成）
 
-```ts
-type Item = {
-  id: string;
-  type: "task" | "memo";
-  text: string;
-  notes?: string;
-  done: boolean;
-  createdAt: number;
-  updatedAt: number;
-  completedAt?: number;
-  dueAt?: number;
-  priority: 0 | 1 | 2 | 3;
-  tags: string[];
-  order: number;
-  pinned?: boolean;
-};
-```
+> 实施建议：从 `develop` 建临时分支 `feat/memo-mode`，复用现有 Item 模型（`type: "memo"`）与标签体系，零新增依赖。
 
-- [ ] 补齐 `dueAt / priority / tags / notes`。
-- [ ] 子任务、重复规则延后到 C6。
+- [x] 同一数据层支持 `type: "memo"`：长文本（上限 1200）+ 标签 + 时间线 + 置顶。
+- [x] 视图切换：顶部新增「备忘」，置顶区 + 今天 / 昨天 / 本周内 / 更早 四段时间线。
+- [x] 每日回顾：命令面板触发，默认抽 3 条 7 天前的旧备忘，同日种子固定、次日更换，可换一批（每日一次）。
+- [x] 轻量 Markdown（加粗、列表、链接），只渲染不提供完整编辑器。
+- [x] 搜索（C4 `search.ts`）与快速添加（C3 `quickAdd.ts`）兼容 memo：`#标签` 生效，日期/优先级 token 留在正文；输入框有「任务 / 备忘」开关（`Ctrl+M`）。
 
-### C2. 视图与分组
+**验收：** 备忘与任务共存于同一存储（v3 结构不变或升 v4 迁移）；回顾、搜索、导出均覆盖 memo。
 
-- [ ] 顶部视图：`收件箱 / 今天 / 计划 / 全部`。
-- [ ] 分组：`逾期 / 今天 / 明天 / 本周 / 以后 / 无日期`。
-- [ ] 逾期用强调色 + 文字标识，不只靠颜色。
-- [ ] 筛选与排序（手动 / 截止时间 / 优先级 / 创建时间）。
-
-### C3. 自然语言快速添加
-
-- [ ] 支持：`明天`、`周五`、`下周一`、`10:30`、`每晚`、`#标签`、`!!` 优先级。
-- [ ] 输入框下方展示可点击修正的 chips。
-- [ ] 解析失败时按纯文本保存，不阻塞输入。
-- [ ] 中文规则自研，先不接大模型。
-
-**验收：** `明天 10:00 交周报 #工作 !!` 生成正确日期、标签、优先级。
-
-### C4. 搜索与命令面板
-
-- [ ] `Ctrl/Cmd + K` 打开：搜索、新建、切主题、导出、清空。
-- [ ] `/` 仍聚焦输入；`Esc` 逐层关闭。
-- [ ] 搜索结果高亮关键词。
-
-### C5. 备忘录模式
-
-- [ ] 同一数据层支持 `type: "memo"`：长文本 + 标签 + 时间线 + 置顶。
-- [ ] 按日期分组的时间线视图。
-- [ ] 每日回顾：随机/按时间抽 3 条旧记录。
-- [ ] 轻量 Markdown（加粗、列表、链接），不做完整编辑器。
+落地说明：v3 结构未变（`Item.type` 早已含 `memo`），读取校验给 memo 补默认值（`dueAt / priority / done / completedAt` 收口），导出导入自动覆盖 memo。
+备忘不参与完成度统计与任务视图，拖拽与批量清除也不碰它。
+纯逻辑四处：`todoStore.ts` 的 `createMemo / isMemo / maxTextLength / memoTimeline`，`quickAdd.ts` 的 `parseMemoInput`，`review.ts` 的 `dailyReview / dailyReviewSeed / reviewSeedForBatch`，`markdown.ts` 的 `renderMarkdown`（先全量转义再放行 http(s)/mailto/相对链接，其余协议降级为纯文本）。
+UI：备忘行 3 行截断可点开 / 「展开全文」、标签与创建时间、置顶 / 编辑（Ctrl+Enter 保存、Esc 取消）/ 删除（复用 A1 toast 撤销）。
+测试：`todoStore` 68、`quickAdd` 50、`markdown` 24、`review` 9、`search` 19，合计 210。
 
 ### C6. 模板与重复（可选）
 
 - [ ] 任务模板（如「每周复盘」）。
-- [ ] 重复规则：每天 / 每周 / 工作日。
-- [ ] 完成重复任务后生成下一次，保留历史。
+- [ ] 重复规则：每天 / 每周 / 工作日；快速添加支持 `每天`、`每周一`。
+- [ ] 完成重复任务后生成下一次，保留历史（`completedAt` 已具备记录基础）。
+
+### C7. 收尾与发布（C 阶段出口）
+
+- [ ] 关闭遗留项：A8 PWA（`vite-plugin-pwa`）、B5 文档同步。
+- [x] A7 的 `LICENSE`（MIT + react-bits vendor Commons Clause 例外说明）。
+- [ ] 版本升 `v1.3.0`，问询用户后走 develop → main squash 流程。
+- [ ] 更新 `docs/DEPENDENCIES.md`（若引入了 PWA 插件）。
 
 ---
 
 ## 7. Sprint D：统计与回顾
 
-- [ ] 周热力图（7 × 12 周）。
-- [ ] 连续完成天数（streak）。
-- [ ] 按标签完成率。
-- [ ] 一键导出周报 Markdown。
+> 纯函数层已就位（零依赖、未接 UI）：`src/lib/stats.ts`（热力图/streak/标签完成率/周报）、
+> `src/lib/statsView.ts`（展示数据组装）、`src/lib/weeklyExport.ts`（周报 Markdown 下载）。
+
+- [x] 周热力图数据层（7 × 12 周，`stats.ts heatmap` + `statsView` 列标签/图例）。
+- [x] 连续完成天数（streak，今天未完成不断签）。
+- [x] 按标签完成率（分母含未完成）。
+- [x] 一键导出周报 Markdown（`weeklyExport.ts`，含环境守卫测试）。
+- [ ] **UI 接线**：概览卡片、热力图渲染、周报导出入口挂到设置/命令面板。
 - [ ] 统计只读当前数据，不引入额外埋点。
 
 **验收：** 一周真实使用后，周报能总结完成数、逾期数、主要标签。
@@ -377,15 +361,17 @@ type Item = {
 
 ## 12. 每个 Sprint 的必过门禁
 
-- [ ] `npm run lint` 通过。
-- [ ] `npm run build` 通过（含 `tsc -b`）。
-- [ ] 375px / 768px / 1440px 三种宽度无横向滚动。
-- [ ] 键盘完成核心流程，焦点可见且不落在遮罩后。
-- [ ] 开启 `prefers-reduced-motion` 后无必要动画。
-- [ ] 浅色/深色分别检查对比度（正文 ≥4.5:1，非文本 ≥3:1）。
-- [ ] 模拟 localStorage 损坏、配额满、隐私模式三种异常。
-- [ ] 多标签页同步场景手测一次。
-- [ ] 新依赖在 PR 中说明体积与许可。
+本轮（C5）逐项结果：
+
+- [x] `npm run lint` 通过（0 error；7 warning 全部来自 `reactbits/` vendor 既有代码，本轮未新增）。
+- [x] `npm run build` 通过（含 `tsc -b`）。
+- [x] 375px / 768px / 1440px 三种宽度无横向滚动（同源 iframe 按三宽度渲染实测：`scrollWidth === clientWidth`，无任何元素右边界越界；长 URL 与中英混排均 `overflow-wrap:anywhere`）。
+- [x] 键盘完成核心流程：`Ctrl+M` 切输入模式、`Ctrl+K` 面板、面板内 ↑↓/Enter、`Ctrl/⌘ + Enter` 保存备忘编辑（`Enter` 换行）、`Esc` 取消；焦点环沿用 A6。
+- [x] `prefers-reduced-motion` 下无新增动画：备忘行与空态的入场动画都走 `reduced ? undefined : ...` 分支，未新增 CSS 动画。
+- [x] 对比度：备忘正文 / 辅助时间 / 置顶徽标全部复用既有 token（`--color-foreground`、`--color-subtle`、`--color-primary` + `--color-on-primary`），未引入新色值，B2 基线继续有效。
+- [x] localStorage 异常路径未改动：写入仍走 `writeState` 的 try/catch 与提示条。
+- [x] 多标签页同步未改动：`storage` 监听整表重读，备忘与任务同样生效。
+- [x] 新依赖在 PR 中说明体积与许可：**本轮零新增**，见 `docs/DEPENDENCIES.md` 第 4 节。
 
 ---
 

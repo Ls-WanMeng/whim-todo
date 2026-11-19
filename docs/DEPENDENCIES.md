@@ -2,7 +2,7 @@
 
 记录当前依赖、推荐候选与引入时机。新增依赖前先查这里，避免重复装同类包。
 
-最后核对：2026-11-18（版本号取自 npm registry 当时的最新版）
+最后核对：2026-11-19（版本号取自 npm registry 当时的最新版）
 
 ## 1. 已安装
 
@@ -14,7 +14,7 @@
 | `canvas-confetti` | 1.9 | 完成全部任务时的彩带 | 颜色取自当前主题 `effects.confetti` |
 | `vite` | 8.3 | 构建 | 已支持 `React.lazy` 拆包（Aurora 独立 chunk） |
 | `typescript` | 7.0 | 类型检查 | `tsc -b` |
-| `vitest` | 5.1 | 单元测试 | 纯函数为主，当前 51 个用例 |
+| `vitest` | 5.1 | 单元测试 | 纯函数为主，当前 210 个用例（C5 结束） |
 | `oxlint` | 1.9x | 静态检查 | 仅剩 react-bits vendor 的既有 warning |
 
 原生能力已覆盖、**不需要**额外包的场景：
@@ -47,7 +47,7 @@
 | `zustand`（109 KB） | 单页面状态用 `useState` 已够；引状态库反而增加心智负担 |
 | `cmdk`（80 KB） | 命令面板自己写 `dialog` + 键盘导航即可，且要复用现有设置面板的焦点管理 |
 | `clsx` / `tailwind-merge` | 项目用原生 CSS 变量与 BEM 风格类名，没有冲突合并需求 |
-| `marked` + `dompurify` | 备忘录轻量 Markdown（加粗/列表/链接）手写 30 行正则更可控，也避免 XSS 面 |
+| `marked` + `dompurify` | 备忘录轻量 Markdown 手写正则更可控，也避免 XSS 面。**C5 已按此落地**：`src/lib/markdown.ts` 自研，24 个测试覆盖转义与协议白名单，未引入任何包 |
 | `idb-keyval`（55 KB） | localStorage 目前够用；数据量真到几 MB 再换 IndexedDB |
 | `vite-plugin-pwa` | A8 已明确暂缓；将来要 PWA 时再装（要求 Node ≥ 20.19） |
 | `@axe-core/react` | 开发期无障碍审计可用，但会拖慢 dev 启动；优先用浏览器 Lighthouse |
@@ -65,3 +65,16 @@
 3. 许可：是否与现有 MIT / 私有项目兼容？（注意 `@axe-core/*` 是 MPL-2.0）
 4. 维护：最近一年是否有发布？issues 是否活跃？
 5. 记录：更新本文件表格，并在提交信息说明理由
+
+## 4. 本轮（C5 备忘录模式）依赖结论
+
+**本轮零新增：没有添加任何 runtime / dev 依赖，`package.json` 未发生变化。**
+
+| 需求 | 实现方式 | 位置 |
+|---|---|---|
+| 轻量 Markdown（加粗 / 列表 / 链接） | 自研 30 行左右正则渲染，先全量转义再放行安全协议 | `src/lib/markdown.ts` |
+| 每日回顾随机取样 | 自研 `mulberry32` 确定性随机，种子按日期生成，同日固定、次日更换 | `src/lib/review.ts` |
+| 备忘时间线分组 | 复用既有 `dates.ts` 的 `startOfDay / addDays / startOfWeek` | `src/lib/todoStore.ts` |
+| 备忘输入解析 | 复用 `quickAdd.ts` 的标签扫描逻辑，只认 `#标签` | `src/lib/quickAdd.ts` |
+
+体积影响：0 KB（无新包）。测试覆盖：`markdown.test.ts`（24）、`review.test.ts`（9）、`todoStore.test.ts`（68）、`quickAdd.test.ts`（50）、`search.test.ts`（19），合计 210 个用例。

@@ -267,7 +267,7 @@ export default function SettingsPanel(props: Props) {
               <div>
                 <dt>快捷键</dt>
                 <dd>
-                  <kbd>/</kbd> 聚焦输入 · <kbd>Esc</kbd> 清空 · 双击文字编辑
+                  <kbd>/</kbd> 聚焦输入 · <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>K</kbd> 搜索 · <kbd>Esc</kbd> 清空 · 双击文字编辑
                 </dd>
               </div>
               <div>

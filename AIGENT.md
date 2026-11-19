@@ -1,21 +1,17 @@
 缓存文件等垃圾产出一定要写到.gitignore文件
 
 
-
-新建develop本地分支，用来日常维护
-
+若非必要你不需要读其他分支的内容，一定要先汇报征得我同意
 
 
-改项目的时候建一个临时分支，可以在分支上多做几次，感觉差不多了merge提交一次develop
+改项目的时候建一个临时分支，可以在分支上多做几次，感觉差不多了merge提交一次Agent
+- 合并到 Agent 用普通 merge（保留分支内的细分提交），不要对临时分支再 squash
+- 功能大成了就询问我是否merge到分支develop（你不需要看develop分支的代码情况，只有冲突的时候你提醒我，或者我同意了你再继续）你只负责用git代码进行分支操作，不需要自发读取其他分支内容
 
-- 合并到 develop 用普通 merge（保留分支内的细分提交），不要对临时分支再 squash
-- 只有 develop → main 才需要 squash 汇总提交，且必须先经过我同意
-
-develop git merge squash 到main先经过我同意
-
+develop git merge squash 到main先经过我同意（在功能完成的时候询问我是否合并提交到main分支）
 
 
-往develop main分支放的时候都要写好commit，比如commit量：工具类维护小分支较多积累几条有好进展了总结一下发到develop累积到功能差不多完工了，总结一下发到main分支
+往develop main分支放的时候都要写好commit，比如commit量：工具类维护小分支较多积累几条有好进展了总结一下发到agent累积到功能差不多完工了，先merge到develop，再从地velop总结一下发到main分支
 
 git版本管理工具skill我给你放到了同级目录了
 

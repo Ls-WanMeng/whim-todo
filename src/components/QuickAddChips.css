@@ -1,0 +1,73 @@
+/* C3 · 快速添加识别项 chips，只消费 index.css 里的设计 token */
+
+.quickadd-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.quickadd-chip {
+  --chip-accent: var(--color-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 2px 6px 2px 10px;
+  background: var(--color-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--chip-accent);
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition), color var(--transition);
+}
+
+.quickadd-chip.kind-date {
+  --chip-accent: var(--color-primary);
+}
+
+.quickadd-chip.kind-time {
+  --chip-accent: var(--color-accent);
+}
+
+.quickadd-chip.kind-priority {
+  --chip-accent: var(--color-destructive);
+}
+
+.quickadd-chip.kind-tag {
+  --chip-accent: var(--color-primary-strong);
+}
+
+.quickadd-chip:hover {
+  background: var(--color-muted);
+  border-color: var(--chip-accent);
+}
+
+.quickadd-chip:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+.quickadd-chip-label {
+  white-space: nowrap;
+}
+
+.quickadd-chip-x {
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: opacity var(--transition);
+}
+
+.quickadd-chip:hover .quickadd-chip-x,
+.quickadd-chip:focus-visible .quickadd-chip-x {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quickadd-chip,
+  .quickadd-chip-x {
+    transition: none;
+  }
+}

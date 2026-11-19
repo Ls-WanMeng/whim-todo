@@ -424,14 +424,19 @@
 }
 
 .list li {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  display: block;
   padding: var(--space-2) var(--space-2);
   border-bottom: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   overflow: hidden;
   transition: background var(--transition);
+}
+
+/* 任务行：勾选 + 文本 + 操作按钮；元信息与详情面板另起一行，占满宽度 */
+.todo-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
 }
 
 .list li:hover {
@@ -524,7 +529,9 @@
 
 /* 空状态 */
 .list li.empty {
+  display: flex;
   flex-direction: column;
+  align-items: center;
   gap: var(--space-2);
   padding: var(--space-8) var(--space-4);
   text-align: center;
@@ -1041,5 +1048,398 @@ kbd {
   .settings-scrim,
   .settings-panel {
     animation: none;
+  }
+}
+
+/* ===== Sprint C：视图 / 分组 / 任务元信息 ===== */
+
+.toolbar {
+  flex-wrap: wrap;
+}
+
+/* 第二行工具栏：排序与批量清理 */
+.toolbar-sub {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.sort-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-subtle);
+}
+
+/* 排序与优先级下拉已替换为 GlassSelect 组件（components/GlassSelect.css），原生 select 样式已移除 */
+
+/* 日期分组：标题 + 条数 */
+.group {
+  margin-bottom: var(--space-3);
+}
+
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-1);
+  padding: 0 var(--space-1);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--color-subtle);
+}
+
+/* 任务主体：只放文本，元信息另起一行 */
+.todo-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.todo-check {
+  margin-top: 1px;
+}
+
+.drag {
+  margin-top: 4px;
+}
+
+.todo-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 5px 0 0 calc(22px + var(--space-2));
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.due-badge,
+.prio,
+.tag {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 1px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-muted);
+  color: var(--color-muted-foreground);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 逾期同时用颜色和「逾期 · 日期」文字，不只靠颜色传达 */
+.due-badge.overdue {
+  color: var(--color-destructive);
+  border-color: var(--color-destructive);
+  background: rgba(239, 68, 68, 0.12);
+  font-weight: 600;
+}
+
+.prio-1 {
+  color: var(--color-muted-foreground);
+}
+
+.prio-2 {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.prio-3 {
+  color: var(--color-destructive);
+  border-color: var(--color-destructive);
+  font-weight: 600;
+}
+
+.tag {
+  color: var(--color-subtle);
+}
+
+/* 行内详情：日期 / 时间 / 优先级 / 标签 / 备注 */
+.todo-detail {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin-top: 6px;
+  padding: var(--space-3);
+  background: var(--color-muted);
+  border: 1px dashed var(--color-border);
+  border-radius: 10px;
+}
+
+.detail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--color-subtle);
+}
+
+.detail-field input,
+.detail-field textarea {
+  width: 100%;
+  min-height: 34px;
+  padding: 4px 8px;
+  background: var(--color-background);
+  color: var(--color-foreground);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.detail-field textarea {
+  resize: vertical;
+  min-height: 52px;
+}
+
+.detail-field input:focus-visible,
+.detail-field textarea:focus-visible {
+  outline: none;
+  border-color: var(--color-ring);
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
+}
+
+.detail-field input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.detail-tags,
+.detail-notes {
+  grid-column: 1 / -1;
+}
+
+.detail-btn.active {
+  opacity: 1;
+  color: var(--color-primary);
+}
+
+@media (max-width: 480px) {
+  .segmented button {
+    padding: 0 var(--space-2);
+    font-size: 13px;
+  }
+
+  .segmented button .count {
+    display: none;
+  }
+
+  .todo-detail {
+    grid-template-columns: 1fr;
+  }
+
+  /* 窄屏优先保住正文宽度：上下移动改由「全部」视图拖动完成 */
+  .move {
+    display: none;
+  }
+
+  .detail-tags,
+  .detail-notes {
+    grid-column: auto;
+  }
+}
+
+/* 快速添加识别项：紧贴输入框，抵消 input-row 的下外边距 */
+.quickadd-bar {
+  margin: calc(-1 * var(--space-2)) 0 var(--space-3);
+}
+
+.quickadd-bar .quickadd-chips {
+  margin-top: 0;
+}
+
+/* 命令面板跳转后的短暂高亮，1.8 秒后由 App 撤掉 class */
+@keyframes todo-flash {
+  0% {
+    background: var(--color-muted);
+    box-shadow: inset 0 0 0 2px var(--color-ring);
+  }
+  100% {
+    background: transparent;
+    box-shadow: inset 0 0 0 2px transparent;
+  }
+}
+
+.list li.is-highlighted {
+  animation: todo-flash 1.8s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .list li.is-highlighted {
+    animation: none;
+    box-shadow: inset 0 0 0 2px var(--color-ring);
+  }
+}
+
+/* ===== C5：备忘模式 ===== */
+
+/* 输入模式开关：任务 / 备忘（Ctrl+M 切换） */
+.entry-mode {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.entry-mode .segmented button[aria-pressed="true"] {
+  background: var(--color-primary);
+}
+
+.entry-mode-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--color-subtle);
+}
+
+/* 备忘行 */
+.list li.memo-row {
+  padding: var(--space-3) var(--space-2);
+}
+
+.memo-row.is-pinned {
+  box-shadow: inset 2px 0 0 var(--color-primary);
+}
+
+.memo-body {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-foreground);
+  overflow-wrap: anywhere;
+}
+
+/* 3 行截断：点正文或「展开全文」展开 */
+.memo-body.clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.memo-body p {
+  margin: 0 0 6px;
+}
+
+.memo-body p:last-child {
+  margin-bottom: 0;
+}
+
+.memo-body ul {
+  margin: 0 0 6px;
+  padding-left: 20px;
+}
+
+/* 正文里的 <li> 不要继承 .list li 的内边距 / 分隔线 / hover */
+.memo-body li {
+  display: list-item;
+  padding: 0;
+  border-bottom: none;
+  background: transparent;
+}
+
+.memo-body li:hover {
+  background: transparent;
+}
+
+.memo-body a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}
+
+.memo-body strong {
+  font-weight: 700;
+}
+
+.memo-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.memo-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.memo-pin-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.memo-time {
+  color: var(--color-subtle);
+  white-space: nowrap;
+}
+
+.memo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.memo-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.memo-edit-input {
+  width: 100%;
+  min-height: 92px;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.memo-edit-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-subtle);
+}
+
+@media (max-width: 480px) {
+  .entry-mode-hint {
+    flex-basis: 100%;
+  }
+
+  .memo-foot {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .memo-actions {
+    justify-content: flex-end;
   }
 }
