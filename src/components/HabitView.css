@@ -1,0 +1,183 @@
+/*
+ * 习惯打卡视图（可选池）：概览卡 + 新建 + 习惯列表。
+ * 全部走主题 CSS 变量（--color-*），不写裸 hex。
+ */
+
+.habit-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-1) 0;
+}
+
+/* 概览卡：三宫格 */
+.habit-overview {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+}
+
+.habit-overview-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  background: var(--color-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.habit-overview-value {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-card-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.habit-overview-label {
+  font-size: 13px;
+  color: var(--color-subtle);
+}
+
+/* 新建 */
+.habit-add {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.habit-add-input {
+  flex: 1;
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  background: var(--color-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-foreground);
+}
+
+.habit-add-input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
+}
+
+.habit-empty {
+  margin: 0;
+  padding: var(--space-5);
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--color-subtle);
+}
+
+/* 列表 */
+.habit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.habit-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  transition: border-color var(--transition);
+}
+
+.habit-row.is-checked {
+  border-color: var(--color-primary);
+}
+
+/* 打卡按钮：圆形，未打空心、已打主色实心 */
+.habit-check {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 2px solid var(--color-border);
+  background: transparent;
+  color: var(--color-on-primary);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.habit-check.on {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.habit-meta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.habit-name {
+  align-self: flex-start;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--color-card-foreground);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.habit-row.is-checked .habit-name {
+  color: var(--color-subtle);
+  text-decoration: line-through;
+}
+
+.habit-edit-input {
+  min-height: 24px;
+  padding: 0 var(--space-2);
+  background: var(--color-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-foreground);
+  font-size: 15px;
+}
+
+.habit-stats {
+  font-size: 12px;
+  color: var(--color-subtle);
+}
+
+.habit-remove {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  color: var(--color-subtle);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color var(--transition), background var(--transition);
+}
+
+.habit-remove:hover {
+  color: var(--color-destructive);
+  background: var(--color-muted);
+}
+
+/* 移动端：概览仍三列（数值小，无需折叠） */

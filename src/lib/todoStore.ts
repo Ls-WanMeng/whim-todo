@@ -1,4 +1,6 @@
 import { addDays, startOfDay, startOfWeek } from "./dates";
+import { nextRepeatDueAt, normalizeRepeat } from "./repeat";
+import type { RepeatRule } from "./repeat";
 
 export const STORAGE_KEY = "whim-todo:v2";
 export const LEGACY_STORAGE_KEY = "dsh-demo-todos";
@@ -39,6 +41,8 @@ export type Todo = {
   tags: string[];
   notes?: string;
   pinned?: boolean;
+  /** C6：重复规则，只有任务才有；完成时据此生成下一条 */
+  repeat?: RepeatRule;
 };
 
 export type TodoPatch = {
@@ -50,6 +54,8 @@ export type TodoPatch = {
   /** null 表示清除备注 */
   notes?: string | null;
   pinned?: boolean;
+  /** null 表示取消重复 */
+  repeat?: RepeatRule | null;
 };
 
 export type ReadStatus = "ok" | "empty" | "migrated" | "corrupt";
@@ -148,6 +154,8 @@ function normalizeItem(
     tags: normalizeTags(record.tags),
     notes: normalizeNotes(record.notes),
     pinned: record.pinned === true ? true : undefined,
+    /* C6：重复规则只属于任务；非法或缺失都回到「不重复」 */
+    repeat: type === "memo" ? undefined : normalizeRepeat(record.repeat),
   };
 }
 
@@ -267,6 +275,33 @@ function reindex(items: Todo[]): Todo[] {
   return items;
 }
 
+/**
+ * 跨标签页冲突合并：以 id 并集为基础，同 id 取 `updatedAt` 较新者，再按 order 重排。
+ *
+ * 适用场景：两个标签页各自增改「不同」条目（常见顺序操作），避免旧快照整表覆盖新改动。
+ * 已知边界：删除无墓碑，若一侧已删、另一侧仍持有该条目，合并会把它「复活」——
+ * 这种删除冲突仍由调用方的「整体以最新写入为准」兜底，本函数只用于增量增强。
+ */
+export function mergeByUpdatedAt(local: Todo[], incoming: Todo[]): Todo[] {
+  const incomingById = new Map(incoming.map((item) => [item.id, item]));
+  const merged = new Map<string, Todo>();
+
+  for (const item of incoming) {
+    merged.set(item.id, item);
+  }
+  for (const item of local) {
+    const other = incomingById.get(item.id);
+    if (!other) {
+      merged.set(item.id, item);
+    } else if (item.updatedAt > other.updatedAt) {
+      merged.set(item.id, item);
+    }
+  }
+
+  const result = [...merged.values()].sort((a, b) => a.order - b.order);
+  return reindex(result.map((item) => ({ ...item })));
+}
+
 export function createTodo(
   text: string,
   now = Date.now(),
@@ -287,6 +322,7 @@ export function createTodo(
     tags: normalizeTags(patch.tags ?? []),
     notes: normalizeNotes(patch.notes),
     pinned: patch.pinned ? true : undefined,
+    repeat: isMemo ? undefined : normalizeRepeat(patch.repeat),
   };
 }
 
@@ -315,6 +351,65 @@ export function toggleTodo(items: Todo[], id: string, now = Date.now()): Todo[] 
   return next;
 }
 
+export type ToggleResult = {
+  items: Todo[];
+  /** 被切换的条目；id 不存在或备忘时为 null */
+  target: Todo | null;
+  /** 这次完成后新生成的重复实例；没生成时为 null */
+  spawned: Todo | null;
+  /** 是否变成已完成 */
+  completed: boolean;
+};
+
+/** 生成重复任务的下一条实例：正文 / 优先级 / 标签 / 备注 / 规则继承，id 与时间全新 */
+function spawnRepeat(source: Todo, items: Todo[], now: number): Todo {
+  const rule = source.repeat as RepeatRule;
+  const nextOrder = items.reduce((max, item) => Math.max(max, item.order), -1) + 1;
+  return {
+    id: newId(),
+    type: "task",
+    text: source.text,
+    done: false,
+    order: nextOrder,
+    createdAt: now,
+    updatedAt: now,
+    dueAt: nextRepeatDueAt(rule, now, source.dueAt),
+    priority: source.priority,
+    tags: [...source.tags],
+    notes: source.notes,
+    repeat: rule,
+  };
+}
+
+/**
+ * 勾选 / 取消勾选；带 repeat 的任务在「完成」这一刻续期：
+ * 以 completedAt（即 now）与原截止日期的较晚者为基准，生成下一条实例。
+ * 原条目原样保留历史（done + completedAt），它的 dueAt 不被改写。
+ */
+export function toggleTodoWithRepeat(items: Todo[], id: string, now = Date.now()): ToggleResult {
+  const index = items.findIndex((item) => item.id === id);
+  if (index < 0) return { items, target: null, spawned: null, completed: false };
+
+  const current = items[index];
+  if (current.type === "memo") return { items, target: null, spawned: null, completed: false };
+
+  const done = !current.done;
+  const target: Todo = {
+    ...current,
+    done,
+    updatedAt: now,
+    completedAt: done ? now : undefined,
+  };
+
+  const withTarget = items.slice();
+  withTarget[index] = target;
+
+  if (!done || !current.repeat) return { items: withTarget, target, spawned: null, completed: done };
+
+  const spawned = spawnRepeat(current, withTarget, now);
+  return { items: [...withTarget, spawned], target, spawned, completed: true };
+}
+
 export function updateTodoText(
   items: Todo[],
   id: string,
@@ -332,6 +427,13 @@ export function updateTodoText(
   return next;
 }
 
+function sameRepeat(a?: RepeatRule, b?: RepeatRule): boolean {
+  if (!a || !b) return a === b;
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "weekly" && b.kind === "weekly") return a.weekday === b.weekday;
+  return true;
+}
+
 function samePatchValue(a: Todo, b: Todo): boolean {
   return (
     a.text === b.text &&
@@ -340,7 +442,8 @@ function samePatchValue(a: Todo, b: Todo): boolean {
     a.tags.length === b.tags.length &&
     a.tags.every((tag, index) => tag === b.tags[index]) &&
     a.notes === b.notes &&
-    a.pinned === b.pinned
+    a.pinned === b.pinned &&
+    sameRepeat(a.repeat, b.repeat)
   );
 }
 
@@ -371,6 +474,7 @@ export function updateTodo(
     next.notes = patch.notes === null ? undefined : normalizeNotes(patch.notes);
   }
   if (patch.pinned !== undefined) next.pinned = patch.pinned ? true : undefined;
+  if (patch.repeat !== undefined && !isMemo) next.repeat = normalizeRepeat(patch.repeat);
 
   if (samePatchValue(current, next)) return items;
 

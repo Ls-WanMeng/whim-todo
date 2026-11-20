@@ -13,6 +13,9 @@ import type { PaletteCommand } from "./components/CommandPalette";
 import GlassSelect from "./components/GlassSelect";
 import QuickAddChips from "./components/QuickAddChips";
 import SettingsPanel from "./components/SettingsPanel";
+import StatsView from "./components/StatsView";
+import HabitView from "./components/HabitView";
+import CalendarView from "./components/CalendarView";
 import ThemeScene from "./components/ThemeScene";
 import { useMotionPreference } from "./hooks/useMotionPreference";
 import {
@@ -27,7 +30,7 @@ import {
   removeTodo,
   restoreTodos,
   serializeExport,
-  toggleTodo,
+  toggleTodoWithRepeat,
   updateTodo,
   updateTodoText,
   writeState,
@@ -35,8 +38,13 @@ import {
   isMemo,
   maxTextLength,
   memoTimeline,
+  mergeByUpdatedAt,
 } from "./lib/todoStore";
 import type { Priority, RemovedTodo, Todo, TodoPatch } from "./lib/todoStore";
+import { WEEKDAY_LABELS, repeatLabel } from "./lib/repeat";
+import type { RepeatRule } from "./lib/repeat";
+import { TASK_TEMPLATES, buildTemplateTask } from "./lib/templates";
+import type { TaskTemplate } from "./lib/templates";
 import {
   DUE_BUCKET_LABELS,
   DUE_BUCKET_ORDER,
@@ -65,9 +73,13 @@ import type { ThemeId, ThemePair, ThemePref } from "./lib/themes";
 import { renderMarkdown } from "./lib/markdown";
 import { parseMemoInput, parseQuickAdd } from "./lib/quickAdd";
 import { DAILY_REVIEW_SIZE, dailyReview, dailyReviewSeed, reviewSeedForBatch } from "./lib/review";
+import { downloadWeeklyReport } from "./lib/weeklyExport";
+import { downloadSnapshotPng } from "./lib/shareSnapshot";
+import { readHabits, writeHabits, habitOverview } from "./lib/habit";
+import type { Habit } from "./lib/habit";
 import "./App.css";
 
-type View = "inbox" | "today" | "planned" | "all" | "memo";
+type View = "inbox" | "today" | "planned" | "all" | "memo" | "stats" | "habit" | "calendar";
 type SortMode = "manual" | "due" | "priority" | "created";
 
 function burst(colors: string[], big = false) {
@@ -89,8 +101,11 @@ const VIEWS: { key: View; label: string }[] = [
   { key: "inbox", label: "收件箱" },
   { key: "today", label: "今天" },
   { key: "planned", label: "计划" },
+  { key: "calendar", label: "日历" },
   { key: "all", label: "全部" },
   { key: "memo", label: "备忘" },
+  { key: "stats", label: "统计" },
+  { key: "habit", label: "习惯" },
 ];
 
 const SORTS: { key: SortMode; label: string }[] = [
@@ -104,6 +119,35 @@ type EntryMode = "task" | "memo";
 
 const PRIORITY_LABELS: Record<Priority, string> = { 0: "无", 1: "低", 2: "中", 3: "高" };
 const PRIORITY_OPTIONS: Priority[] = [0, 1, 2, 3];
+
+/** 重复规则在下拉里用字符串表示，落库时再转回 RepeatRule */
+const REPEAT_OPTIONS: { value: string; label: string }[] = [
+  { value: "none", label: "不重复" },
+  { value: "daily", label: "每天" },
+  { value: "weekdays", label: "工作日" },
+  ...WEEKDAY_LABELS.map((label, weekday) => ({ value: `weekly-${weekday}`, label: `每${label}` })),
+];
+
+function repeatToValue(rule?: RepeatRule): string {
+  if (!rule) return "none";
+  return rule.kind === "weekly" ? `weekly-${rule.weekday}` : rule.kind;
+}
+
+function valueToRepeat(value: string): RepeatRule | null {
+  if (value === "daily") return { kind: "daily" };
+  if (value === "weekdays") return { kind: "weekdays" };
+  const match = /^weekly-([0-6])$/.exec(value);
+  return match ? { kind: "weekly", weekday: Number(match[1]) } : null;
+}
+
+function RepeatIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M20 11a8 8 0 1 0-2.4 6.4" />
+      <path d="M20 4.5V11h-6.5" />
+    </svg>
+  );
+}
 
 function PlusIcon() {
   return (
@@ -326,7 +370,8 @@ function TodoItem(props: {
   }
 
   const overdue = todo.dueAt !== undefined && !todo.done && isOverdue(todo.dueAt);
-  const hasMeta = todo.dueAt !== undefined || todo.priority > 0 || todo.tags.length > 0;
+  const hasMeta =
+    todo.dueAt !== undefined || todo.priority > 0 || todo.tags.length > 0 || todo.repeat !== undefined;
 
   const content = (
     <>
@@ -435,6 +480,12 @@ function TodoItem(props: {
               {PRIORITY_LABELS[todo.priority]}优先级
             </span>
           )}
+          {todo.repeat !== undefined && (
+            <span className="repeat-badge" title={`重复：${repeatLabel(todo.repeat)}`}>
+              <RepeatIcon />
+              {repeatLabel(todo.repeat)}
+            </span>
+          )}
           {todo.tags.map((tag) => (
             <span className="tag" key={tag}>
               #{tag}
@@ -469,6 +520,15 @@ function TodoItem(props: {
                 label: PRIORITY_LABELS[priority],
               }))}
               onChange={(priority) => onPatch(todo.id, { priority })}
+            />
+          </label>
+          <label className="detail-field">
+            <span>重复</span>
+            <GlassSelect
+              value={repeatToValue(todo.repeat)}
+              ariaLabel={`「${todo.text}」的重复规则`}
+              options={REPEAT_OPTIONS}
+              onChange={(value) => onPatch(todo.id, { repeat: valueToRepeat(value) })}
             />
           </label>
           <label className="detail-field detail-tags">
@@ -719,6 +779,7 @@ function MemoRow(props: {
 export default function App() {
   const [initialRead] = useState(() => readState(window.localStorage));
   const [todos, setTodos] = useState<Todo[]>(initialRead.items);
+  const [habits, setHabits] = useState<Habit[]>(() => readHabits(window.localStorage).habits);
   const [text, setText] = useState("");
   const [view, setView] = useState<View>("inbox");
   const [sort, setSort] = useState<SortMode>("manual");
@@ -782,13 +843,18 @@ export default function App() {
     setStorageError(result.ok ? "" : "浏览器存储不可用，修改仅保留在当前页面。");
   }, [todos, initialRead.status]);
 
-  /* 跨标签页同步：其他标签页写入后重新读取 */
+  /* 习惯数据持久化（独立 key，随 habits 变化写入） */
+  useEffect(() => {
+    writeHabits(window.localStorage, habits);
+  }, [habits]);
+
+  /* 跨标签页同步：其他标签页写入后按 updatedAt 逐条合并（删除冲突仍由整表覆盖兜底） */
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
       if (event.key !== null && event.key !== STORAGE_KEY) return;
       const result = readState(window.localStorage);
       if (result.status !== "corrupt") {
-        setTodos(result.items);
+        setTodos((prev) => mergeByUpdatedAt(prev, result.items));
         announce("已同步其他标签页的修改");
       }
     };
@@ -902,10 +968,13 @@ export default function App() {
     planned: tasks.filter((t) => !t.done && t.dueAt !== undefined).length,
     all: tasks.length,
     memo: memos.length,
+    stats: tasks.filter((t) => !t.done && t.dueAt !== undefined && isOverdue(t.dueAt, now)).length,
+    habit: Math.max(0, habits.length - habitOverview(habits, now).checkedToday),
+    calendar: tasks.filter((t) => !t.done && t.dueAt !== undefined).length,
   };
 
   const visible = useMemo(() => {
-    if (view === "memo") return [];
+    if (view === "memo" || view === "stats" || view === "habit" || view === "calendar") return [];
     const list = tasks.filter((todo) => {
       if (view === "all") return true;
       if (todo.done) return false;
@@ -931,7 +1000,7 @@ export default function App() {
   }, [tasks, view, sort, now]);
 
   const groups = useMemo(() => {
-    if (view === "memo") return null;
+    if (view === "memo" || view === "stats" || view === "habit" || view === "calendar") return null;
     const shouldGroup = sort === "due" || view === "today" || view === "planned";
     if (!shouldGroup) return null;
 
@@ -961,6 +1030,7 @@ export default function App() {
       dueAt: quickAdd.dueAt,
       priority: quickAdd.priority,
       tags: quickAdd.tags,
+      repeat: quickAdd.repeat,
     });
     const nextOrder = todos.reduce((max, todo) => Math.max(max, todo.order), -1) + 1;
     /* 备忘：不带日期与优先级，只留标签；记完直接进「备忘」视图，避免「记完不知道去哪了」 */
@@ -993,6 +1063,7 @@ export default function App() {
     const extras = [
       quickAdd.dueAt !== undefined ? formatDue(quickAdd.dueAt, now) : "",
       quickAdd.priority > 0 ? `${PRIORITY_LABELS[quickAdd.priority]}优先级` : "",
+      quickAdd.repeat !== undefined ? repeatLabel(quickAdd.repeat) : "",
       quickAdd.tags.length > 0 ? quickAdd.tags.map((tag) => `#${tag}`).join(" ") : "",
     ].filter(Boolean);
     announce(`已添加：${value}${extras.length > 0 ? `（${extras.join("，")}）` : ""}`);
@@ -1019,16 +1090,27 @@ export default function App() {
   }
 
   function toggle(id: string) {
-    const target = todos.find((t) => t.id === id);
-    if (!target) return;
-    const next = toggleTodo(todos, id);
-    setTodos(next);
-    if (!target.done) {
-      burst(theme.effects.confetti, next.length > 0 && next.every((t) => t.done));
-      announce(`已完成：${target.text}`);
-    } else {
-      announce(`已恢复：${target.text}`);
+    const origin = todos.find((todo) => todo.id === id);
+    if (!origin) return;
+
+    const result = toggleTodoWithRepeat(todos, id, Date.now());
+    if (!result.target) return;
+    setTodos(result.items);
+
+    if (!result.completed) {
+      announce(`已恢复：${origin.text}`);
+      return;
     }
+
+    /* 生成下一条说明「这条还会再来」，播报里带上它的到期时间 */
+    const rest = result.items.filter((item) => !isMemo(item) && !item.done);
+    burst(theme.effects.confetti, rest.length === 0);
+    const next = result.spawned;
+    announce(
+      next !== null
+        ? `已完成：${origin.text}，下一条：${formatDue(next.dueAt, now)}`
+        : `已完成：${origin.text}`,
+    );
   }
 
   function edit(id: string, nextText: string) {
@@ -1088,9 +1170,31 @@ export default function App() {
     setTodos((items) => moveTodoAmong(items, ids, id, delta));
   }
 
+  /* 一键套用内置模板：正文 / 标签 / 优先级 / 重复规则一起落库，并跳到能看见它的视图 */
+  function applyTemplate(template: TaskTemplate) {
+    const draft = buildTemplateTask(template, Date.now());
+    const nextOrder = todos.reduce((max, todo) => Math.max(max, todo.order), -1) + 1;
+    const item = {
+      ...createTodo(draft.text, Date.now(), {
+        dueAt: draft.dueAt,
+        priority: draft.priority,
+        tags: draft.tags,
+        notes: draft.notes,
+        repeat: draft.repeat,
+      }),
+      order: nextOrder,
+    };
+
+    setTodos([...todos, item]);
+    setView("planned");
+    setHighlightId(item.id);
+    announce(
+      `已套用模板「${template.label}」：${formatDue(item.dueAt, now)}，${repeatLabel(item.repeat)}重复`,
+    );
+  }
+
   /* 备忘置顶：只翻转 pinned，其余字段不动 */
-  function togglePin(id: string) {
-    const target = todos.find((todo) => todo.id === id);
+  function togglePin(id: string) {    const target = todos.find((todo) => todo.id === id);
     if (!target) return;
     const next = target.pinned !== true;
     setTodos((list) => updateTodo(list, id, { pinned: next }));
@@ -1146,6 +1250,24 @@ export default function App() {
     link.remove();
     URL.revokeObjectURL(url);
     announce(`已导出 ${todos.length} 条`);
+  }
+
+  function exportWeekly() {
+    const ok = downloadWeeklyReport(todos, now);
+    announce(ok ? "已导出周报" : "当前环境不支持导出周报");
+  }
+
+  async function shareSnapshot() {
+    const tokens = theme.tokens;
+    const ok = await downloadSnapshotPng(todos, {
+      background: tokens.background,
+      card: tokens.card,
+      foreground: tokens.foreground,
+      subtle: tokens.subtle,
+      primary: tokens.primary,
+      onPrimary: tokens["on-primary"],
+    });
+    announce(ok ? "已保存清单快照" : "当前环境不支持生成快照");
   }
 
   async function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
@@ -1205,7 +1327,7 @@ export default function App() {
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
-  }, [view, counts.inbox, counts.today, counts.planned, counts.all]);
+  }, [view, counts.inbox, counts.today, counts.planned, counts.all, counts.stats, counts.habit, counts.calendar]);
 
   const pillStyle = {
     transform: `translateX(${pill.x}px)`,
@@ -1301,6 +1423,12 @@ export default function App() {
       hint: "聚焦输入框",
       run: () => requestAnimationFrame(() => inputRef.current?.focus()),
     },
+    ...TASK_TEMPLATES.map((template) => ({
+      id: `template-${template.id}`,
+      label: `套用模板：${template.label}`,
+      hint: template.hint,
+      run: () => applyTemplate(template),
+    })),
     { id: "go-today", label: "查看今天", hint: "逾期与今天到期", run: () => setView("today") },
     { id: "go-all", label: "查看全部任务", hint: "含已完成", run: () => setView("all") },
     {
@@ -1311,6 +1439,7 @@ export default function App() {
     },
     { id: "open-settings", label: "打开设置", hint: "主题 · 动效 · 数据", run: () => setSettingsOpen(true) },
     { id: "export", label: "导出数据", hint: `JSON · ${todos.length} 条`, run: exportTodos },
+    { id: "share-snapshot", label: "分享清单快照", hint: "生成 PNG 图片", run: shareSnapshot },
     {
       id: "clear-done",
       label: "清除已完成",
@@ -1531,7 +1660,7 @@ export default function App() {
           </div>
         </div>
 
-        {view !== "memo" && (
+        {view !== "memo" && view !== "stats" && view !== "habit" && view !== "calendar" && (
         <div className="toolbar-sub">
           <label className="sort-field">
             <span>排序</span>
@@ -1554,7 +1683,13 @@ export default function App() {
         </div>
         )}
 
-        {view === "memo" ? (
+        {view === "stats" ? (
+          <StatsView todos={todos} now={now} onExportWeekly={exportWeekly} />
+        ) : view === "habit" ? (
+          <HabitView habits={habits} now={now} onChange={setHabits} announce={announce} />
+        ) : view === "calendar" ? (
+          <CalendarView todos={todos} now={now} onToggle={toggle} onOpenTodo={pickTodo} />
+        ) : view === "memo" ? (
           timeline.total === 0 ? (
             <ul className="list">{memoEmptyState}</ul>
           ) : (

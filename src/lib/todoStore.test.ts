@@ -14,6 +14,7 @@ import {
   serializeExport,
   parseImport,
   toggleTodo,
+  toggleTodoWithRepeat,
   updateTodo,
   updateTodoText,
   writeState,
@@ -23,6 +24,7 @@ import {
   maxTextLength,
   MAX_TEXT_LENGTH,
   MAX_MEMO_LENGTH,
+  mergeByUpdatedAt,
 } from "./todoStore";
 import type { Todo } from "./todoStore";
 
@@ -875,5 +877,267 @@ describe("memoTimeline（C5-1）", () => {
     const before = JSON.stringify(items);
     memoTimeline(items, NOW);
     expect(JSON.stringify(items)).toBe(before);
+  });
+});
+
+describe("C6 重复规则", () => {
+  /** 2026-11-20 周五 08:05 */
+  const NOW_FRI = new Date(2026, 10, 20, 8, 5, 0).getTime();
+  const FRI_8 = new Date(2026, 10, 20, 8, 0, 0).getTime();
+  const SAT_8 = new Date(2026, 10, 21, 8, 0, 0).getTime();
+  const MON_9 = new Date(2026, 10, 23, 9, 0, 0).getTime();
+  const NEXT_MON_9 = new Date(2026, 10, 30, 9, 0, 0).getTime();
+
+  function repeated(overrides: Partial<Todo> = {}): Todo {
+    return makeTodo({
+      id: "r1",
+      text: "晨跑",
+      dueAt: FRI_8,
+      priority: 2,
+      tags: ["健康"],
+      notes: "五公里",
+      repeat: { kind: "daily" },
+      ...overrides,
+    });
+  }
+
+  it("createTodo 接受重复规则", () => {
+    const item = createTodo("晨跑", 1, { repeat: { kind: "daily" } });
+    expect(item.repeat).toEqual({ kind: "daily" });
+    expect(createTodo("复盘", 1, { repeat: { kind: "weekly", weekday: 0 } }).repeat).toEqual({
+      kind: "weekly",
+      weekday: 0,
+    });
+  });
+
+  it("不带重复规则时字段为空（老数据形态不变）", () => {
+    expect(createTodo("交周报", 1).repeat).toBeUndefined();
+    expect(createTodo("交周报", 1, { repeat: null }).repeat).toBeUndefined();
+  });
+
+  it("备忘不收重复规则", () => {
+    expect(createMemo("随手记", 1, { repeat: { kind: "daily" } }).repeat).toBeUndefined();
+  });
+
+  it("读取时保留合法规则，非法规则丢弃", () => {
+    const storage = mem({
+      [STORAGE_KEY]: JSON.stringify({
+        version: 3,
+        items: [
+          { text: "合法", repeat: { kind: "weekly", weekday: 3 } },
+          { text: "越界", repeat: { kind: "weekly", weekday: 9 } },
+          { text: "陌生", repeat: { kind: "monthly" } },
+          { text: "字符串", repeat: "daily" },
+        ],
+      }),
+    });
+
+    const items = readState(storage).items;
+    expect(items[0].repeat).toEqual({ kind: "weekly", weekday: 3 });
+    expect(items[1].repeat).toBeUndefined();
+    expect(items[2].repeat).toBeUndefined();
+    expect(items[3].repeat).toBeUndefined();
+  });
+
+  it("读取时抹掉备忘身上的重复规则", () => {
+    const storage = mem({
+      [STORAGE_KEY]: JSON.stringify({
+        version: 3,
+        items: [{ type: "memo", text: "备忘", repeat: { kind: "daily" } }],
+      }),
+    });
+
+    expect(readState(storage).items[0].repeat).toBeUndefined();
+  });
+
+  it("updateTodo 设置与清除重复规则", () => {
+    const items = [makeTodo({ id: "a", text: "周报", dueAt: FRI_8 })];
+
+    const set = updateTodo(items, "a", { repeat: { kind: "weekdays" } }, NOW_FRI);
+    expect(set[0].repeat).toEqual({ kind: "weekdays" });
+    expect(set[0].updatedAt).toBe(NOW_FRI);
+
+    const cleared = updateTodo(set, "a", { repeat: null }, NOW_FRI);
+    expect(cleared[0].repeat).toBeUndefined();
+  });
+
+  it("updateTodo 重复规则没实质变化时返回原引用", () => {
+    const items = [repeated()];
+    expect(updateTodo(items, "r1", { repeat: { kind: "daily" } }, NOW_FRI)).toBe(items);
+  });
+
+  it("改成另一条每周规则要真的写进去", () => {
+    const items = [repeated({ repeat: { kind: "weekly", weekday: 0 } })];
+    const next = updateTodo(items, "r1", { repeat: { kind: "weekly", weekday: 5 } }, NOW_FRI);
+    expect(next[0].repeat).toEqual({ kind: "weekly", weekday: 5 });
+  });
+
+  it("每天：完成后生成明天同一钟点的下一条，原条目保留历史", () => {
+    const before = repeated();
+    const result = toggleTodoWithRepeat([before], "r1", NOW_FRI);
+
+    expect(result.items).toHaveLength(2);
+    expect(result.completed).toBe(true);
+
+    const kept = result.items[0];
+    expect(kept.id).toBe("r1");
+    expect(kept.done).toBe(true);
+    expect(kept.completedAt).toBe(NOW_FRI);
+    expect(kept.dueAt).toBe(FRI_8);
+
+    const spawned = result.spawned;
+    expect(spawned).not.toBeNull();
+    expect(spawned?.id).not.toBe("r1");
+    expect(spawned?.text).toBe("晨跑");
+    expect(spawned?.done).toBe(false);
+    expect(spawned?.dueAt).toBe(SAT_8);
+    expect(spawned?.priority).toBe(2);
+    expect(spawned?.tags).toEqual(["健康"]);
+    expect(spawned?.notes).toBe("五公里");
+    expect(spawned?.repeat).toEqual({ kind: "daily" });
+    expect(spawned?.createdAt).toBe(NOW_FRI);
+  });
+
+  it("生成的下一条排在列表末尾", () => {
+    const items = [
+      repeated(),
+      makeTodo({ id: "b", text: "别的", order: 1 }),
+      makeTodo({ id: "c", text: "第三", order: 2 }),
+    ];
+    const result = toggleTodoWithRepeat(items, "r1", NOW_FRI);
+    const spawned = result.spawned;
+    expect(spawned?.order).toBe(3);
+    expect(JSON.stringify(result.items.map((item) => item.order))).toBe("[0,1,2,3]");
+  });
+
+  it("每周一 9 点：周五提前完成，下一条顺延到再下一个周一", () => {
+    const item = repeated({ dueAt: MON_9, repeat: { kind: "weekly", weekday: 0 } });
+    const result = toggleTodoWithRepeat([item], "r1", NOW_FRI);
+    expect(result.spawned?.dueAt).toBe(NEXT_MON_9);
+  });
+
+  it("每周一 9 点：周一当天完成后，下一条是下周一而不是当天", () => {
+    const mondayMorning = new Date(2026, 10, 23, 9, 30, 0).getTime();
+    const item = repeated({ dueAt: MON_9, repeat: { kind: "weekly", weekday: 0 } });
+    const result = toggleTodoWithRepeat([item], "r1", mondayMorning);
+    expect(result.spawned?.dueAt).toBe(NEXT_MON_9);
+  });
+
+  it("工作日：周五完成后下一条落在下周一，钟点沿用原截止时间", () => {
+    const item = repeated({ dueAt: new Date(2026, 10, 20, 18, 0, 0).getTime(), repeat: { kind: "weekdays" } });
+    const result = toggleTodoWithRepeat([item], "r1", NOW_FRI);
+    expect(result.spawned?.dueAt).toBe(new Date(2026, 10, 23, 18, 0, 0).getTime());
+  });
+
+  it("提前完成不会生成跟原截止日撞车的一条", () => {
+    const thursdayNight = new Date(2026, 10, 19, 20, 0, 0).getTime();
+    const item = repeated();
+    const result = toggleTodoWithRepeat([item], "r1", thursdayNight);
+    expect(result.spawned?.dueAt).toBe(SAT_8);
+  });
+
+  it("取消勾选不生成下一条", () => {
+    const item = repeated({ done: true, completedAt: NOW_FRI });
+    const result = toggleTodoWithRepeat([item], "r1", NOW_FRI);
+
+    expect(result.completed).toBe(false);
+    expect(result.spawned).toBeNull();
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].done).toBe(false);
+    expect(result.items[0].completedAt).toBeUndefined();
+  });
+
+  it("没有重复规则的任务只是普通勾选", () => {
+    const item = makeTodo({ id: "plain", text: "交周报", dueAt: FRI_8 });
+    const result = toggleTodoWithRepeat([item], "plain", NOW_FRI);
+
+    expect(result.spawned).toBeNull();
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].done).toBe(true);
+  });
+
+  it("备忘不会被勾选，也不会生成下一条", () => {
+    const items = [createMemo("想法", 1, {})];
+    const result = toggleTodoWithRepeat(items, items[0].id, NOW_FRI);
+    expect(result.items).toBe(items);
+    expect(result.target).toBeNull();
+    expect(result.spawned).toBeNull();
+  });
+
+  it("未知 id 原样返回", () => {
+    const items = [repeated()];
+    const result = toggleTodoWithRepeat(items, "nope", NOW_FRI);
+    expect(result.items).toBe(items);
+    expect(result.target).toBeNull();
+  });
+
+  it("连成链：完成下一条还能再生成", () => {
+    const first = toggleTodoWithRepeat([repeated()], "r1", NOW_FRI);
+    const second = toggleTodoWithRepeat(first.items, first.spawned!.id, SAT_8);
+
+    expect(second.items).toHaveLength(3);
+    expect(second.spawned?.dueAt).toBe(new Date(2026, 10, 22, 8, 0, 0).getTime());
+  });
+
+  it("导出再导入，重复规则还在", () => {
+    const items = [repeated({ repeat: { kind: "weekly", weekday: 2 } })];
+    const result = parseImport(serializeExport(items));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.items[0].repeat).toEqual({ kind: "weekly", weekday: 2 });
+  });
+
+  it("清除已完成会带走历史实例，不影响下一条", () => {
+    const result = toggleTodoWithRepeat([repeated()], "r1", NOW_FRI);
+    const cleared = clearDone(result.items);
+
+    expect(cleared.items).toHaveLength(1);
+    expect(cleared.items[0].repeat).toEqual({ kind: "daily" });
+    expect(cleared.items[0].done).toBe(false);
+    expect(cleared.removed).toHaveLength(1);
+  });
+});
+
+describe("mergeByUpdatedAt", () => {
+  it("同 id 取 updatedAt 较新者", () => {
+    const local = [makeTodo({ id: "a", text: "旧", updatedAt: 10 })];
+    const incoming = [makeTodo({ id: "a", text: "新", updatedAt: 20 })];
+    const merged = mergeByUpdatedAt(local, incoming);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].text).toBe("新");
+  });
+
+  it("本地较新时保留本地", () => {
+    const local = [makeTodo({ id: "a", text: "本地新", updatedAt: 30 })];
+    const incoming = [makeTodo({ id: "a", text: "对方旧", updatedAt: 20 })];
+    const merged = mergeByUpdatedAt(local, incoming);
+    expect(merged[0].text).toBe("本地新");
+  });
+
+  it("两侧各自新增的条目并集保留", () => {
+    const local = [makeTodo({ id: "a", text: "本地", updatedAt: 10, order: 0 })];
+    const incoming = [makeTodo({ id: "b", text: "对方", updatedAt: 10, order: 0 })];
+    const merged = mergeByUpdatedAt(local, incoming);
+    expect(merged.map((t) => t.id).sort()).toEqual(["a", "b"]);
+  });
+
+  it("按 order 重排并重新编号", () => {
+    const local = [makeTodo({ id: "a", text: "a", updatedAt: 1, order: 5 })];
+    const incoming = [makeTodo({ id: "b", text: "b", updatedAt: 1, order: 0 })];
+    const merged = mergeByUpdatedAt(local, incoming);
+    expect(merged[0].id).toBe("b");
+    expect(merged[1].id).toBe("a");
+    expect(merged[0].order).toBe(0);
+    expect(merged[1].order).toBe(1);
+  });
+
+  it("不改动入参数组", () => {
+    const local = [makeTodo({ id: "a", text: "a", updatedAt: 10 })];
+    const incoming = [makeTodo({ id: "b", text: "b", updatedAt: 10 })];
+    const localBefore = JSON.stringify(local);
+    const incomingBefore = JSON.stringify(incoming);
+    mergeByUpdatedAt(local, incoming);
+    expect(JSON.stringify(local)).toBe(localBefore);
+    expect(JSON.stringify(incoming)).toBe(incomingBefore);
   });
 });

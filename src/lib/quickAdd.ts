@@ -13,10 +13,14 @@
  *      超过 8 个不同标签后，多余的 #xxx 原样留在正文。
  *   3. 任何解析失败都退化成「纯文本 + 默认值」，本函数不会抛错。
  *   4. 日期一律落在本地时区的当天 00:00；带时间点时为该时刻的 ms。
+ *   5. C6 起认出「每天 / 工作日 / 每周X」三族重复写法，同样只认首个；
+ *      写了重复但没写日期时，首个到期时间取「从现在起最近一次命中」。
  */
+import { firstRepeatDueAt, WEEKDAY_LABELS } from "./repeat";
+import type { RepeatRule } from "./repeat";
 
-/** 识别项类别：日期 / 时间 / 优先级 / 标签 */
-export type QuickAddTokenKind = "date" | "time" | "priority" | "tag";
+/** 识别项类别：日期 / 时间 / 优先级 / 标签 / 重复 */
+export type QuickAddTokenKind = "date" | "time" | "priority" | "tag" | "repeat";
 
 export type QuickAddToken = {
   kind: QuickAddTokenKind;
@@ -35,6 +39,8 @@ export type ParsedQuickAdd = {
   /** 去重、保序、最多 8 个 */
   tags: string[];
   tokens: QuickAddToken[];
+  /** C6：识别到的重复规则 */
+  repeat?: RepeatRule;
 };
 
 const MAX_TAGS = 8;
@@ -105,6 +111,8 @@ type Candidate = {
   minutes?: number;
   priority?: 0 | 1 | 2 | 3;
   tag?: string;
+  /** 重复规则 */
+  repeat?: RepeatRule;
 };
 
 function collectDates(source: string, todayStart: number, today: Date, out: Candidate[]): void {
@@ -242,6 +250,49 @@ function formatClock(hour: number, minute: number): string {
 }
 
 /**
+ * C6 · 重复写法：每天 / 每日、工作日、每周X（也认每星期 / 每礼拜）。
+ * 「每周一」这类要排在「周一」前面（靠候选排序里「起点早者优先、同起点长者优先」拿下）。
+ */
+function collectRepeats(source: string, out: Candidate[]): void {
+  for (const match of source.matchAll(/每(?:天|日)/g)) {
+    const start = match.index ?? 0;
+    out.push({
+      kind: "repeat",
+      start,
+      end: start + match[0].length,
+      label: "每天",
+      repeat: { kind: "daily" },
+    });
+  }
+
+  for (const match of source.matchAll(/每(?:周|星期|礼拜)([一二三四五六日天七1-7])/g)) {
+    const weekday = WEEKDAY_BY_CHAR[match[1]];
+    if (weekday === undefined) continue;
+    const start = match.index ?? 0;
+    out.push({
+      kind: "repeat",
+      start,
+      end: start + match[0].length,
+      /* 标签统一成「每周X」，和任务行里的重复标记同一口径 */
+      label: `每${WEEKDAY_LABELS[weekday]}`,
+      repeat: { kind: "weekly", weekday },
+    });
+  }
+
+  // 「工作日」也接受「每工作日」「每个工作日」这类写法（整段摘掉，正文不留半截）
+  for (const match of source.matchAll(/(?:每(?:个)?)?工作日/g)) {
+    const start = match.index ?? 0;
+    out.push({
+      kind: "repeat",
+      start,
+      end: start + match[0].length,
+      label: "工作日",
+      repeat: { kind: "weekdays" },
+    });
+  }
+}
+
+/**
  * 解析自然语言快速添加。
  * @param input 用户输入
  * @param now 参照时刻（测试请传固定值）；非法值回落到 Date.now()
@@ -255,6 +306,7 @@ export function parseQuickAdd(input: string, now?: number): ParsedQuickAdd {
   const candidates: Candidate[] = [];
   collectDates(source, todayStart, today, candidates);
   collectTimes(source, candidates);
+  collectRepeats(source, candidates);
 
   // 优先级：!! → 3，! → 2（连续感叹号整段算一个 token，!!! 仍是最紧急）
   for (const match of source.matchAll(/!+/g)) {
@@ -284,7 +336,9 @@ export function parseQuickAdd(input: string, now?: number): ParsedQuickAdd {
   // 左到右处理，长的优先：先到先得，重叠的一律放弃
   candidates.sort((a, b) => a.start - b.start || b.end - a.end);
 
+  /** accepted：要从正文里摘掉的区间；claimed：已占位但保留在正文（挡住内部更短的候选） */
   const accepted: { start: number; end: number }[] = [];
+  const claimed: { start: number; end: number }[] = [];
   const tokens: QuickAddToken[] = [];
   const tags: string[] = [];
   const tagSet = new Set<string>();
@@ -293,35 +347,60 @@ export function parseQuickAdd(input: string, now?: number): ParsedQuickAdd {
   let dateMinutes: number | undefined;
   let timeMinutes: number | undefined;
   let priority: 0 | 1 | 2 | 3 = 0;
+  let repeat: RepeatRule | undefined;
+
+  const overlaps = (candidate: Candidate) =>
+    [...accepted, ...claimed].some(
+      (range) => candidate.start < range.end && candidate.end > range.start,
+    );
 
   for (const candidate of candidates) {
-    const overlap = accepted.some((r) => candidate.start < r.end && candidate.end > r.start);
-    if (overlap) continue;
+    if (overlaps(candidate)) continue;
+    const range = { start: candidate.start, end: candidate.end };
 
     if (candidate.kind === "date") {
-      if (dateAt !== undefined) continue;
+      if (dateAt !== undefined) {
+        claimed.push(range);
+        continue;
+      }
       dateAt = candidate.dayAt;
       dateMinutes = candidate.dayMinutes;
     } else if (candidate.kind === "time") {
-      if (timeMinutes !== undefined) continue;
+      if (timeMinutes !== undefined) {
+        claimed.push(range);
+        continue;
+      }
       timeMinutes = candidate.minutes;
     } else if (candidate.kind === "priority") {
-      if (priority !== 0) continue;
+      if (priority !== 0) {
+        claimed.push(range);
+        continue;
+      }
       priority = candidate.priority ?? 0;
+    } else if (candidate.kind === "repeat") {
+      /* 「每周一」里的「周一」已被这条重复项占位，不会再被当成日期 */
+      if (repeat !== undefined) {
+        claimed.push(range);
+        continue;
+      }
+      repeat = candidate.repeat;
     } else {
       const name = candidate.tag ?? "";
       if (!name) continue;
       // 重复标签：正文里删掉，但不重复产出 chip
       if (tagSet.has(name)) {
-        accepted.push({ start: candidate.start, end: candidate.end });
+        accepted.push(range);
         continue;
       }
-      if (tags.length >= MAX_TAGS) continue;
+      if (tags.length >= MAX_TAGS) {
+        claimed.push(range);
+        continue;
+      }
       tagSet.add(name);
       tags.push(name);
     }
 
-    accepted.push({ start: candidate.start, end: candidate.end });
+    accepted.push(range);
     tokens.push({
       kind: candidate.kind,
       raw: source.slice(candidate.start, candidate.end),
@@ -332,6 +411,10 @@ export function parseQuickAdd(input: string, now?: number): ParsedQuickAdd {
   let dueAt: number | undefined;
   if (dateAt !== undefined) {
     dueAt = dateAt + (timeMinutes ?? dateMinutes ?? 0) * MINUTE_MS;
+  } else if (repeat !== undefined) {
+    /* 只有重复写法：首个到期落在「从现在起最近一次命中」，钟点取识别到的时间 */
+    const prototype = timeMinutes === undefined ? undefined : todayStart + timeMinutes * MINUTE_MS;
+    dueAt = firstRepeatDueAt(repeat, base, prototype);
   } else if (timeMinutes !== undefined) {
     // 只有时间：落在今天，已经过了就明天
     const todayAt = todayStart + timeMinutes * MINUTE_MS;
@@ -344,6 +427,7 @@ export function parseQuickAdd(input: string, now?: number): ParsedQuickAdd {
     priority,
     tags,
     tokens,
+    repeat,
   };
 }
 
@@ -402,12 +486,13 @@ export function parseMemoInput(input: string): ParsedQuickAdd {
     priority: 0,
     tags,
     tokens,
+    repeat: undefined,
   };
 }
 /**
  * 点掉第 index 个识别项（QuickAddChips 的删除按钮）之后的结果。
  *
- * 正文不用动：token 早已从正文移除；只有 dueAt / priority / tags 需要按「剩下的 token」重算。
+ * 正文不用动：token 早已从正文移除；只有 dueAt / priority / tags / repeat 需要按「剩下的 token」重算。
  * 做法是把剩下 token 的原文重新拼一遍再解析 —— 这些 token 本来互不重叠，拼回去语义一致，
  * 也就避免了宿主自己去推导「去了日期只剩时间该怎么算」这类规则。
  *
@@ -429,5 +514,6 @@ export function removeQuickAddToken(
     priority: reparsed.priority,
     tags: reparsed.tags,
     tokens,
+    repeat: reparsed.repeat,
   };
 }

@@ -13,6 +13,7 @@ const KIND_LABEL: Record<QuickAddTokenKind, string> = {
   time: "时间",
   priority: "优先级",
   tag: "标签",
+  repeat: "重复",
 };
 
 function CloseIcon() {

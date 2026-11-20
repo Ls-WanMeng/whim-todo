@@ -1,0 +1,250 @@
+/*
+ * 统计视图（Sprint D）：概览卡 + 周热力图 + 标签完成率 + 周报导出。
+ * 全部走主题 CSS 变量（--color-*），不写裸 hex；热力图强度用 --color-primary 的透明度渐变。
+ */
+
+.stats-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-1) 0;
+}
+
+/* 概览卡：四宫格 */
+.stats-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3);
+}
+
+.stats-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  background: var(--color-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.stats-card-value {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-card-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-card-unit {
+  margin-left: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-subtle);
+}
+
+.stats-card-label {
+  font-size: 13px;
+  color: var(--color-subtle);
+}
+
+/* 逾期卡：有逾期时用强调色提示 */
+.stats-card.is-alert .stats-card-value {
+  color: var(--color-destructive);
+}
+
+.stats-card.is-alert .stats-card-label {
+  color: var(--color-destructive);
+}
+
+/* 内容块 */
+.stats-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.stats-block-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.stats-block-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-card-foreground);
+}
+
+.stats-block-sub {
+  font-size: 12.5px;
+  color: var(--color-subtle);
+}
+
+/* 热力图 */
+.heatmap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.heatmap-grid {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: var(--space-1);
+}
+
+.heatmap-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.heat-cell {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex: none;
+}
+
+/* 强度档位：0 无完成用边框灰，1–4 用主色透明度递增 */
+.heat-cell-0 {
+  background: var(--color-muted);
+  box-shadow: inset 0 0 0 1px var(--color-border);
+}
+
+.heat-cell-1 {
+  background: color-mix(in srgb, var(--color-primary) 30%, transparent);
+}
+
+.heat-cell-2 {
+  background: color-mix(in srgb, var(--color-primary) 55%, transparent);
+}
+
+.heat-cell-3 {
+  background: color-mix(in srgb, var(--color-primary) 78%, transparent);
+}
+
+.heat-cell-4 {
+  background: var(--color-primary);
+}
+
+.heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--color-subtle);
+}
+
+.heatmap-legend .heat-cell {
+  width: 10px;
+  height: 10px;
+}
+
+.heatmap-legend-label {
+  margin: 0 2px;
+}
+
+/* 标签完成率 */
+.stats-empty {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--color-subtle);
+}
+
+.tag-stats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.tag-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tag-stat-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.tag-stat-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-card-foreground);
+}
+
+.tag-stat-nums {
+  font-size: 12.5px;
+  color: var(--color-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.tag-stat-bar {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-muted);
+  box-shadow: inset 0 0 0 1px var(--color-border);
+  overflow: hidden;
+}
+
+.tag-stat-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--color-primary);
+  transition: width var(--transition);
+}
+
+.tag-stat-rate {
+  align-self: flex-end;
+  font-size: 12px;
+  color: var(--color-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 周报导出 */
+.stats-export {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.stats-export-text {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--color-subtle);
+  max-width: 46ch;
+}
+
+/* 移动端：概览卡两列，导出块改纵排 */
+@media (max-width: 640px) {
+  .stats-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .stats-export {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .stats-export-text {
+    max-width: none;
+  }
+}

@@ -341,6 +341,120 @@ describe("removeQuickAddToken", () => {
   });
 });
 
+describe("parseQuickAdd · 重复规则（C6）", () => {
+  it("每天 8点 晨跑：识别重复 + 时间，首次落在今天 8 点", () => {
+    const result = parseQuickAdd("每天 8点 晨跑", NOW_THU);
+
+    expect(result.text).toBe("晨跑");
+    expect(result.repeat).toEqual({ kind: "daily" });
+    expect(result.dueAt).toBe(at(2026, 11, 19, 8));
+    expect(result.tokens).toEqual([
+      { kind: "repeat", raw: "每天", label: "每天" },
+      { kind: "time", raw: "8点", label: "08:00" },
+    ]);
+  });
+
+  it("每日 与 每天 等价", () => {
+    expect(parseQuickAdd("每日 跑步", NOW_THU).repeat).toEqual({ kind: "daily" });
+  });
+
+  it("工作日：只带规则时的首次到期落在下一个工作日的钟点", () => {
+    const result = parseQuickAdd("工作日 9点 站会", NOW_THU);
+    expect(result.repeat).toEqual({ kind: "weekdays" });
+    expect(result.dueAt).toBe(at(2026, 11, 19, 9));
+    expect(result.text).toBe("站会");
+  });
+
+  it("「每工作日」整段摘掉，正文不留半截", () => {
+    const result = parseQuickAdd("每工作日 17点 日报", NOW_THU);
+    expect(result.repeat).toEqual({ kind: "weekdays" });
+    expect(result.text).toBe("日报");
+    expect(result.tokens[0].raw).toBe("每工作日");
+    expect(result.tokens[0].label).toBe("工作日");
+  });
+
+  it("每周一：内部「周一」不会再被当成日期 token", () => {
+    const result = parseQuickAdd("每周一 复盘", NOW_THU);
+
+    expect(result.repeat).toEqual({ kind: "weekly", weekday: 0 });
+    expect(result.dueAt).toBe(at(2026, 11, 23));
+    expect(result.text).toBe("复盘");
+    expect(result.tokens).toEqual([{ kind: "repeat", raw: "每周一", label: "每周一" }]);
+  });
+
+  it("每周日 + 时间：首次落在最近的周日那一刻", () => {
+    const result = parseQuickAdd("每周日下午3点 总结", NOW_THU);
+    expect(result.repeat).toEqual({ kind: "weekly", weekday: 6 });
+    expect(result.dueAt).toBe(at(2026, 11, 22, 15));
+    expect(result.text).toBe("总结");
+  });
+
+  it("每星期X / 每礼拜X 同义，标签统一成「每周X」", () => {
+    expect(parseQuickAdd("每星期天 复盘", NOW_THU).repeat).toEqual({ kind: "weekly", weekday: 6 });
+    expect(parseQuickAdd("每礼拜1 复盘", NOW_THU).tokens[0].label).toBe("每周一");
+    expect(parseQuickAdd("每周七 复盘", NOW_THU).tokens[0].label).toBe("每周日");
+  });
+
+  it("写了日期就以日期为准，不再按规则推算", () => {
+    const result = parseQuickAdd("每天 明天 8点 晨跑", NOW_THU);
+    expect(result.repeat).toEqual({ kind: "daily" });
+    expect(result.dueAt).toBe(at(2026, 11, 20, 8));
+    expect(result.text).toBe("晨跑");
+  });
+
+  it("只认首个重复写法，多余的留在正文里且不产出日期", () => {
+    const result = parseQuickAdd("每天 每周一 复盘", NOW_THU);
+
+    expect(result.repeat).toEqual({ kind: "daily" });
+    expect(result.text).toBe("每周一 复盘");
+    expect(result.tokens).toHaveLength(1);
+    // 留着的那段不会被当成「周一」日期
+    expect(result.dueAt).toBe(at(2026, 11, 20));
+  });
+
+  it("只有重复写法、没有日期时间时按其推算首个到期", () => {
+    expect(parseQuickAdd("每天", NOW_THU).dueAt).toBe(at(2026, 11, 20));
+    expect(parseQuickAdd("每周五", NOW_THU).dueAt).toBe(at(2026, 11, 20));
+    expect(parseQuickAdd("每周六", NOW_THU).dueAt).toBe(at(2026, 11, 21));
+  });
+
+  it("没有重复写法时 repeat 为空（老行为的兼容）", () => {
+    expect(parseQuickAdd("明天 交周报", NOW_THU).repeat).toBeUndefined();
+  });
+
+  it("重复 token 的 raw 一定能在原输入里原样找到", () => {
+    const input = "每工作日 上午10点半 站会";
+    const result = parseQuickAdd(input, NOW_THU);
+    for (const token of result.tokens) {
+      expect(input.includes(token.raw)).toBe(true);
+    }
+  });
+
+  it("点掉重复 chip 后 repeat 消失，日期与时间仍在", () => {
+    const parsed = parseQuickAdd("每天 8点 晨跑", NOW_THU);
+    const result = removeQuickAddToken(parsed, 0, NOW_THU);
+
+    expect(result.repeat).toBeUndefined();
+    expect(result.dueAt).toBe(at(2026, 11, 19, 8));
+    expect(result.tokens.map((token) => token.kind)).toEqual(["time"]);
+  });
+
+  it("点掉时间 chip 后仍保留重复规则，并按规则重算首个到期", () => {
+    const parsed = parseQuickAdd("每天 8点 晨跑", NOW_THU);
+    const result = removeQuickAddToken(parsed, 1, NOW_THU);
+
+    expect(result.repeat).toEqual({ kind: "daily" });
+    expect(result.dueAt).toBe(at(2026, 11, 20));
+  });
+
+  it("备忘模式不认重复写法，原文留在正文", () => {
+    const result = parseMemoInput("每天 8点 跑步 #习惯");
+    expect(result.repeat).toBeUndefined();
+    expect(result.text).toBe("每天 8点 跑步");
+    expect(result.tags).toEqual(["习惯"]);
+  });
+});
+
 describe("日期工具函数", () => {
   it("startOfLocalDay 取当天 00:00", () => {
     expect(startOfLocalDay(at(2026, 11, 19, 21, 5))).toBe(at(2026, 11, 19));

@@ -278,3 +278,17 @@ input {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* 移动端按屏宽降低 backdrop-filter 模糊值：手机大幅降、平板小幅降，减少 GPU 采样开销。
+   高对比主题的 --glass-blur:0px 特指性更高，仍会覆盖此处的降级值。 */
+@media (max-width: 640px) {
+  :root {
+    --glass-blur: 6px;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+  :root {
+    --glass-blur: 9px;
+  }
+}

@@ -1,0 +1,309 @@
+/*
+ * 日历视图（主题 01）：周视图 + 月视图。
+ * 全部走主题 CSS 变量（--color-*），不写裸 hex；今天高亮用 --color-primary，now line 用 --color-primary 半透明。
+ */
+
+.cal-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-1) 0;
+}
+
+/* 顶部：切换 + 概览 */
+.cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.cal-seg {
+  display: inline-flex;
+  padding: 3px;
+  background: var(--color-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  gap: 2px;
+}
+
+.cal-seg-btn {
+  padding: 5px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-subtle);
+  background: transparent;
+  border: none;
+  border-radius: calc(var(--radius-md) - 2px);
+  cursor: pointer;
+}
+
+.cal-seg-btn.is-active {
+  color: var(--color-card-foreground);
+  background: var(--color-background);
+  box-shadow: 0 0 0 1px var(--color-border);
+}
+
+.cal-head-summary {
+  font-size: 13.5px;
+  color: var(--color-subtle);
+}
+
+.cal-head-summary strong {
+  color: var(--color-card-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 周视图 */
+.cal-week {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--color-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.cal-week-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.cal-week-header {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.cal-week-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--space-2) 4px;
+  font-size: 12px;
+  color: var(--color-subtle);
+}
+
+.cal-week-head-day {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-card-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-week-head.is-today .cal-week-head-label,
+.cal-week-head.is-today .cal-week-head-day {
+  color: var(--color-primary);
+}
+
+.cal-week-body {
+  min-height: 280px;
+}
+
+.cal-week-cell {
+  position: relative;
+  padding: var(--space-2);
+  border-right: 1px solid var(--color-border);
+  min-height: 100%;
+}
+
+.cal-week-cell:last-child {
+  border-right: none;
+}
+
+.cal-week-cell.is-today {
+  background: color-mix(in srgb, var(--color-primary) 5%, transparent);
+}
+
+/* now line：当前时间指示线 */
+.cal-now-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: color-mix(in srgb, var(--color-primary) 60%, transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.cal-week-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+  z-index: 2;
+}
+
+.cal-week-empty {
+  font-size: 14px;
+  color: var(--color-subtle);
+  opacity: 0.5;
+  text-align: center;
+  padding: var(--space-2) 0;
+}
+
+/* 月视图 */
+.cal-month {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--color-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.cal-month-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.cal-month-header {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.cal-month-head {
+  padding: var(--space-2) 4px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-subtle);
+}
+
+.cal-month-cell {
+  position: relative;
+  min-height: 96px;
+  padding: 6px;
+  border-right: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.cal-month-cell:nth-child(7n) {
+  border-right: none;
+}
+
+.cal-month-row:last-child .cal-month-cell {
+  border-bottom: none;
+}
+
+.cal-month-cell.is-outside {
+  opacity: 0.4;
+}
+
+.cal-month-cell.is-today {
+  background: color-mix(in srgb, var(--color-primary) 5%, transparent);
+}
+
+.cal-month-cell-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.cal-month-day {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-card-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-month-cell.is-today .cal-month-day {
+  color: var(--color-primary);
+}
+
+.cal-month-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-on-primary);
+  background: var(--color-primary);
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-month-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cal-month-more {
+  font-size: 11px;
+  color: var(--color-subtle);
+  padding-left: 2px;
+}
+
+/* 任务 chip（周/月共用） */
+.cal-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 6px;
+  font-size: 12px;
+  text-align: left;
+  color: var(--color-card-foreground);
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.cal-chip-check {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid var(--color-border);
+  background: transparent;
+}
+
+.cal-chip.is-done .cal-chip-check {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.cal-chip.is-done .cal-chip-text {
+  color: var(--color-subtle);
+  text-decoration: line-through;
+}
+
+.cal-chip-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cal-chip-time {
+  flex: none;
+  font-size: 11px;
+  color: var(--color-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 移动端：月视图最小高度降低，周视图允许横向滚动 */
+@media (max-width: 640px) {
+  .cal-month-cell {
+    min-height: 64px;
+    padding: 4px;
+  }
+
+  .cal-month-tasks {
+    gap: 2px;
+  }
+
+  .cal-chip {
+    padding: 2px 4px;
+    font-size: 11px;
+  }
+}

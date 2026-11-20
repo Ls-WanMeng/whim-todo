@@ -49,7 +49,7 @@
 | `clsx` / `tailwind-merge` | 项目用原生 CSS 变量与 BEM 风格类名，没有冲突合并需求 |
 | `marked` + `dompurify` | 备忘录轻量 Markdown 手写正则更可控，也避免 XSS 面。**C5 已按此落地**：`src/lib/markdown.ts` 自研，24 个测试覆盖转义与协议白名单，未引入任何包 |
 | `idb-keyval`（55 KB） | localStorage 目前够用；数据量真到几 MB 再换 IndexedDB |
-| `vite-plugin-pwa` | A8 已明确暂缓；将来要 PWA 时再装（要求 Node ≥ 20.19） |
+| `vite-plugin-pwa` | A8 已明确暂缓；将来要 PWA 时再装（要求 Node ≥ 20.19）。**2026-11-20 复核**：与「单文件双击打开」架构冲突——PWA 需独立 `manifest.webmanifest` / `sw.js` / 图标产物，且 Service Worker 无法在 `file://` 下注册；当前 `vite.config.ts` 的 `inlineSingleFile` 插件把 JS/CSS 全部内联进 `index.html`。若要做「可安装 + 离线」，需先决定是否放弃 file:// 双击打开，届时再评估 PWA 作为增强模式单独构建 |
 | `@axe-core/react` | 开发期无障碍审计可用，但会拖慢 dev 启动；优先用浏览器 Lighthouse |
 
 ### 2.3 视觉层
